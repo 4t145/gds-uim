@@ -180,8 +180,8 @@ let padded = div().map(m! { p: 8.0.px; rounded_lg });
 ```
 
 属性块内的 `method => { 属性 };` 等价于 `method: $m! { 属性 };`，适用于
-接受一个构建器闭包的方法，无需单独导入 `m`。它在 `el!`、`div!` 等快捷宏
-及 `m!` 内均可使用，支持嵌套，例如 `map => { hover => { bg: 0x818cf8.rgb } }`。
+接受一个构建器闭包的方法，无需单独导入 `m`。它在 `el!` 和 `m!` 内均可使用，
+支持嵌套，例如 `map => { hover => { bg: 0x818cf8.rgb } }`。
 属性仍以分号分隔，最后一个分号可省略。`method => {}` 传入返回原值的闭包。
 `method => move { 属性 };` 等价于 `method: $m!(move { 属性 });`。
 多参数方法继续使用显式参数，例如 `group_hover: "group", $m! { bg: color };`。
@@ -245,7 +245,7 @@ let element = el! {
 
 先构建前面的属性和子元素，再求值后缀宏并调用闭包，各阶段只执行一次。
 闭包参数类型由前一阶段的结果推断，可以改变返回类型，后面也可以继续接
-`{属性}`、`[子元素]` 或其他后缀。`div!` 等快捷宏同样支持这个写法。
+`{属性}`、`[子元素]` 或其他后缀。
 
 后缀宏无需 `$` 前缀，但需要正常导入宏，或者使用 `.gds_uim::m! { ... }` 这样的
 限定路径。别名宏也可用；需要移动捕获时写 `.m!(move { ... })`。这个规则
@@ -272,37 +272,29 @@ el! {
 例如 `#img($self.image_path.clone())`、`List(1.increment, $(a + b))`，
 或 `#deferred(#div ["内容"])`。函数路径中的泛型参数仍使用 Rust 类型语法。
 
-内置元素也有快捷宏。`div! { flex; gap: 6.0.px; }` 等价于
-`el! { #gpui::div { flex; gap: 6.0.px; } }`。快捷宏固定使用 GPUI 工厂路径，
-不需要导入同名函数；样式 trait 和 `px` 等值转换函数仍由调用方导入。
-
-| 快捷宏 | 参数形式 |
-| --- | --- |
-| `div!`、`svg!`、`anchored!` | 直接写属性，或 `{属性} [子元素]` |
-| `img!`、`canvas!`、`deferred!`、`image_cache!`、`list!`、`uniform_list!`、`surface!` | 直接传参数；带属性时写 `(参数) {属性} [子元素]` |
+GPUI 元素统一使用 `el!` 的工厂语法，例如 `#div`、`#svg`、`#img(source)`。
+可以导入工厂函数，也可以直接使用 `#gpui::div` 等完整路径。
+样式 trait 和 `px` 等值转换函数由调用方导入。
 
 ```rust
-use gpui::{prelude::*, px};
-use gds_uim::{div, img};
+use gpui::{div, img, prelude::*, px};
+use gds_uim::el;
 
-let image = img! { ("images/avatar.png") { size: 32.0.px; } };
-let element = div! {
-    { flex; flex_col; gap: 8.0.px; }
-    [
-        $div! { child: "标题"; },
+let image = el! { #img("images/avatar.png") { size: 32.0.px; } };
+let element = el! {
+    #div { flex; flex_col; gap: 8.0.px; } [
+        #div ["标题"],
         $image,
     ]
 };
 ```
 
-快捷宏也使用相同的 DSL 值与 `$` 边界。将快捷宏调用嵌入 `el!` 或其他快捷
-宏的子元素列表时，写成 `$div! { ... }`。有泛型参数的工厂可以使用
-`canvas! { ::<Pixels>(参数) {属性} }`。
+有泛型参数的工厂使用 `#gpui::canvas::<Pixels>(参数) {属性}`。
 
 用于渲染的元素树应在 GPUI 的 `Render::render` 或 `RenderOnce::render` 中
 构建，让子元素的帧内分配和事件处理器归属正确的视图。
 
-`examples/clicker.rs` 使用 `el!` 和 `m!` 构建加一、重置按钮和计数显示：
+`examples/clicker.rs` 使用 `el!` 构建加一、重置按钮和计数显示：
 
 ```sh
 cargo run --locked --example clicker

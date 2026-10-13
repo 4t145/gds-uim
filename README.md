@@ -2,18 +2,17 @@
 
 Cargo 包名为 `gds-uim`，Rust 中使用 `gds_uim` 导入。
 
-为 GPUI 提供声明式元素宏：`el!` 构建元素树，`div!`、`svg!`、`img!` 等
-10 种快捷宏调用内置元素工厂，`m!`（map）用相同的属性语法构建通用构建器闭包。
+为 GPUI 提供声明式宏：`el!` 构建元素树，`m!`（map）用相同的属性语法
+构建通用构建器闭包。元素通过 `#div`、`#svg`、`#img(...)` 等工厂语法创建。
 
 ```rust
-use gpui::{prelude::*, px};
-use gds_uim::div;
+use gpui::{div, prelude::*, px};
+use gds_uim::el;
 
-let element = div! {
-    { flex; flex_col; gap: 8.0.px; }
-    [
+let element = el! {
+    #div { flex; flex_col; gap: 8.0.px; } [
         "Hello",
-        $div! { child: "GPUI"; },
+        #div ["GPUI"],
     ]
 };
 ```
@@ -85,4 +84,4 @@ cargo fmt --check
 
 完整语法见 [docs/grammer.md](docs/grammer.md)。解析器按职责拆分在
 [src/macros](src/macros)，clicker 使用 Rust 默认递归上限。
-库没有运行时依赖；快捷宏的调用方需要 GPUI 依赖和相关扩展 trait。
+库没有运行时依赖；元素工厂、构建器 trait 和值转换函数由调用方提供。

@@ -45,18 +45,20 @@ fn map_closures_infer_real_gpui_style_and_element_types() {
     assert_eq!(custom.style().display, Some(Display::Flex));
     assert_eq!(custom.style().gap.height, Some(px(6.0).into()));
 
-    let mut shortcut: Stateful<Div> = gds_uim::div! {
-        map => {
-            id: "mapped-shortcut";
-            hover => { bg: 0x818cf8.gpui::rgb };
-            p: 8.0.px
+    let mut mapped: Stateful<Div> = el! {
+        #div {
+            map => {
+                id: "mapped-element";
+                hover => { bg: 0x818cf8.gpui::rgb };
+                p: 8.0.px
+            }
         }
     };
-    assert_eq!(shortcut.style().padding.top, Some(px(8.0).into()));
+    assert_eq!(mapped.style().padding.top, Some(px(8.0).into()));
 
-    let mut suffixed: Stateful<Div> = gds_uim::div! {
-        { flex; }
-        .gds_uim::m! { id: "suffixed-shortcut"; hover => { bg: 0x475569.gpui::rgb } }
+    let mut suffixed: Stateful<Div> = el! {
+        #div { flex; }
+        .gds_uim::m! { id: "suffixed-element"; hover => { bg: 0x475569.gpui::rgb } }
         { gap: 6.0.px }
     };
     assert_eq!(suffixed.style().display, Some(Display::Flex));
@@ -321,11 +323,13 @@ fn uses_gpui_conditions_and_evaluates_expressions_once() {
 fn conditional_arrow_changes_the_border_only_when_selected() {
     const ACCENT: u32 = 0x818cf8;
     for selected in [false, true] {
-        let mut row: Stateful<Div> = gds_uim::div! {
-            id: "row";
-            border_1;
-            border_color: 0x30384b.gpui::rgb;
-            @selected => { border_color: ACCENT.gpui::rgb };
+        let mut row: Stateful<Div> = el! {
+            #div {
+                id: "row";
+                border_1;
+                border_color: 0x30384b.gpui::rgb;
+                @selected => { border_color: ACCENT.gpui::rgb };
+            }
         };
         let expected = if selected { ACCENT } else { 0x30384b };
         assert_eq!(row.style().border_color, Some(gpui::rgb(expected).into()));
@@ -473,99 +477,38 @@ fn suffix_deferred_preserves_layout_and_orders_paint_by_priority(cx: &mut TestAp
 }
 
 #[test]
-fn builtin_shortcuts_use_gpui_factories_and_accept_element_bodies() {
-    // A local function with the same name must not change the built-in macro.
-    fn div() -> u32 {
-        7
-    }
-    use gds_uim::div as container;
-
-    let mut element: Div = container! { flex; gap: 6.0.px; };
-    assert_eq!(div(), 7);
-    assert_eq!(element.style().display, Some(Display::Flex));
-    assert_eq!(element.style().gap.height, Some(px(6.0).into()));
-    let _: Div = gds_uim::div! {};
-    let _: Div = gds_uim::div! {
-        { flex; }
-        ["Title", $gds_uim::div! { child: "Content"; }]
+fn hash_factories_cover_wrappers_caches_and_virtual_lists() {
+    let _: gpui::Anchored = el! {
+        #gpui::anchored { anchor: gpui::Corner::TopLeft; } [#gpui::div]
     };
-    let _: gpui::Deferred = gds_uim::div! { .gpui::deferred { priority: 1; } };
-
-    let mut vector: gpui::Svg = gds_uim::svg! {
-        path: "icons/confirm.svg";
-        size: 16.0.px;
-    };
-    let mut image: gpui::Img = gds_uim::img! {
-        ("images/avatar.png") { size: 32.0.px; }
-    };
-    let _: gpui::Img = gds_uim::img!("images/avatar.png");
-    assert_eq!(vector.style().size.width, Some(px(16.0).into()));
-    assert_eq!(image.style().size.height, Some(px(32.0).into()));
-}
-
-#[test]
-fn shortcuts_cover_wrappers_caches_and_virtual_lists() {
-    let _: gpui::Anchored = gds_uim::anchored! {
-        { anchor: gpui::Corner::TopLeft; }
-        [#gpui::div]
-    };
-    let _: gpui::Deferred = gds_uim::deferred!(#gpui::div ["Content"]);
-    let _: gpui::Deferred = gds_uim::deferred! {
-        (#gpui::div ["Content"]) { priority: 2; }
+    let _: gpui::Deferred = el! { #gpui::deferred(#gpui::div ["Content"]) };
+    let _: gpui::Deferred = el! {
+        #gpui::deferred(#gpui::div ["Content"]) { priority: 2; }
     };
 
     let provider = gpui::retain_all("image-cache");
-    let mut cache: gpui::ImageCacheElement = gds_uim::image_cache! {
-        (provider) { size: 32.0.px; } [#gpui::div]
+    let mut cache: gpui::ImageCacheElement = el! {
+        #gpui::image_cache(provider) { size: 32.0.px; } [#gpui::div]
     };
     assert_eq!(cache.style().size.width, Some(px(32.0).into()));
 
     let state = gpui::ListState::new(0, gpui::ListAlignment::Top, px(20.0));
-    let mut list: gpui::List = gds_uim::list! {
-        (state, $|_, _, _| gds_uim::div! {}.into_any_element()) { size: 20.0.px; }
+    let mut list: gpui::List = el! {
+        #gpui::list(state, $|_, _, _| el! { #div }.into_any_element()) { size: 20.0.px; }
     };
     assert_eq!(list.style().size.height, Some(px(20.0).into()));
 
-    let mut uniform: gpui::UniformList = gds_uim::uniform_list! {
-        ("uniform-list", 0, $|range, _, _| {
-            range.map(|_| gds_uim::div! { size: 24.0.px; }).collect::<Vec<_>>()
+    let mut uniform: gpui::UniformList = el! {
+        #gpui::uniform_list("uniform-list", 0, $|range, _, _| {
+            range.map(|_| el! { #div { size: 24.0.px; } }).collect::<Vec<_>>()
         }) { size: 24.0.px; }
     };
     assert_eq!(uniform.style().size.height, Some(px(24.0).into()));
 
     // SurfaceSource is platform-specific and uninhabited on Linux. Check the
-    // shortcut's signature without requiring a macOS video buffer.
+    // factory's signature without requiring a macOS video buffer.
     fn make_surface(source: gpui::SurfaceSource) -> gpui::Surface {
-        gds_uim::surface! { (source) { size: 16.0.px; } }
+        el! { #gpui::surface(source) { size: 16.0.px; } }
     }
     let _make_surface: fn(gpui::SurfaceSource) -> gpui::Surface = make_surface;
-}
-
-#[gpui::test]
-fn paints_a_canvas_from_shortcut_macros(cx: &mut TestAppContext) {
-    let painted = Rc::new(RefCell::new(None));
-    let record_paint = painted.clone();
-    let (_view, _visual) = cx.add_window_view(move |_, _| {
-        TestView(Box::new(move || {
-            let record_paint = record_paint.clone();
-            gds_uim::div! {
-                { flex; }
-                [
-                    $gds_uim::canvas! {
-                        ::<Pixels>(
-                            $|bounds, _, _| bounds.size.width,
-                            $move |bounds, width, _, _| {
-                                *record_paint.borrow_mut() = Some((bounds, width));
-                            },
-                        ) { size: 24.0.px; }
-                    },
-                ]
-            }
-            .into_any_element()
-        }))
-    });
-    let painted = painted.borrow();
-    let (bounds, width) = painted.as_ref().expect("shortcut canvas should be painted");
-    assert_eq!(bounds.size, size(px(24.0), px(24.0)));
-    assert_eq!(*width, px(24.0));
 }
