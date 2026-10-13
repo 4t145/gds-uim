@@ -26,6 +26,9 @@ macro_rules! __uim_emit {
         $crate::__uim_value!(@arguments [@condition_builder [$element] [$($children)*] [$condition]]
             [] $($tail)*)
     };
+    (@emit [@condition_map [$element:expr] [$builder:expr]] [$condition:expr] ;) => {
+        ($element).when($condition, $builder)
+    };
     (@emit [$($context:tt)*] [$value:expr] $($invalid:tt)*) => {
         compile_error!("el!: unexpected tokens after a value; use .function for unary application, ; between attributes, and , between arguments or children; Rust expressions require $")
     };

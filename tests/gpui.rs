@@ -3,16 +3,65 @@ use std::{
     rc::Rc,
 };
 
+use gds_uim::{el, m};
 use gpui::{
     AnyElement, App, Bounds, Display, Div, FlexDirection, InteractiveText, IntoElement, Modifiers,
     MouseButton, Pixels, RenderOnce, SharedString, Stateful, StyleRefinement, StyledText,
     TestAppContext, Window, deferred, div, point, prelude::*, px, size,
 };
-use uim::el;
 
 // Build fresh elements inside Render so GPUI owns their frame allocations and
 // installs event handlers on the window's rendered view.
 struct TestView(Box<dyn FnMut() -> AnyElement>);
+
+#[test]
+fn map_closures_infer_real_gpui_style_and_element_types() {
+    fn refine(builder: impl FnOnce(StyleRefinement) -> StyleRefinement) -> StyleRefinement {
+        builder(StyleRefinement::default())
+    }
+
+    let refinement = refine(m! {
+        bg: 0x818cf8.gpui::rgb;
+        p: 8.0.px;
+        border_1;
+    });
+    assert_eq!(refinement.background, Some(gpui::rgb(0x818cf8).into()));
+    assert_eq!(refinement.padding.top, Some(px(8.0).into()));
+    assert_eq!(refinement.border_widths.top, Some(px(1.0).into()));
+
+    let mut element: Stateful<Div> = div().map(m! {
+        id: "styled";
+        @true: $m! { gap: 4.0.px };
+        hover => { bg: 0x818cf8.gpui::rgb };
+        active => { bg: 0x6366f1.gpui::rgb };
+        focus => { border_2; border_color: 0xffffff.gpui::rgb };
+        group_hover: "group", $m! { text_color: 0xffffff.gpui::rgb };
+    });
+    assert_eq!(element.style().gap.height, Some(px(4.0).into()));
+
+    let mut vector = gpui::svg().when(true, m! { size: 16.0.px });
+    assert_eq!(vector.style().size.width, Some(px(16.0).into()));
+    let mut custom = List::new().map(m! { flex; gap: 6.0.px });
+    assert_eq!(custom.style().display, Some(Display::Flex));
+    assert_eq!(custom.style().gap.height, Some(px(6.0).into()));
+
+    let mut shortcut: Stateful<Div> = gds_uim::div! {
+        map => {
+            id: "mapped-shortcut";
+            hover => { bg: 0x818cf8.gpui::rgb };
+            p: 8.0.px
+        }
+    };
+    assert_eq!(shortcut.style().padding.top, Some(px(8.0).into()));
+
+    let mut suffixed: Stateful<Div> = gds_uim::div! {
+        { flex; }
+        .gds_uim::m! { id: "suffixed-shortcut"; hover => { bg: 0x475569.gpui::rgb } }
+        { gap: 6.0.px }
+    };
+    assert_eq!(suffixed.style().display, Some(Display::Flex));
+    assert_eq!(suffixed.style().gap.height, Some(px(6.0).into()));
+}
 
 impl Render for TestView {
     fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
@@ -268,6 +317,21 @@ fn uses_gpui_conditions_and_evaluates_expressions_once() {
     assert_eq!(element.style().gap.height, Some(px(8.0).into()));
 }
 
+#[test]
+fn conditional_arrow_changes_the_border_only_when_selected() {
+    const ACCENT: u32 = 0x818cf8;
+    for selected in [false, true] {
+        let mut row: Stateful<Div> = gds_uim::div! {
+            id: "row";
+            border_1;
+            border_color: 0x30384b.gpui::rgb;
+            @selected => { border_color: ACCENT.gpui::rgb };
+        };
+        let expected = if selected { ACCENT } else { 0x30384b };
+        assert_eq!(row.style().border_color, Some(gpui::rgb(expected).into()));
+    }
+}
+
 #[gpui::test]
 fn dispatches_gpui_events_after_a_type_changing_id_method(cx: &mut TestAppContext) {
     let clicks = Rc::new(Cell::new(0));
@@ -375,9 +439,9 @@ fn suffix_deferred_preserves_layout_and_orders_paint_by_priority(cx: &mut TestAp
                     };
                 } [
                     #recorded_canvas("normal-first", 8.0, $record_paints.clone()),
-                    #div { size: 16.0.px; } [
+                    #div [
                         #recorded_canvas("deferred-high", 16.0, $record_paints.clone()),
-                    ].deferred { priority: 10; },
+                    ].m! { size: 16.0.px }.deferred.m! { priority: 10; },
                     #recorded_canvas("normal-second", 8.0, $record_paints.clone()),
                     #div { size: 12.0.px; } [
                         #recorded_canvas("deferred-low", 12.0, $record_paints.clone()),
@@ -414,57 +478,57 @@ fn builtin_shortcuts_use_gpui_factories_and_accept_element_bodies() {
     fn div() -> u32 {
         7
     }
-    use uim::div as container;
+    use gds_uim::div as container;
 
     let mut element: Div = container! { flex; gap: 6.0.px; };
     assert_eq!(div(), 7);
     assert_eq!(element.style().display, Some(Display::Flex));
     assert_eq!(element.style().gap.height, Some(px(6.0).into()));
-    let _: Div = uim::div! {};
-    let _: Div = uim::div! {
+    let _: Div = gds_uim::div! {};
+    let _: Div = gds_uim::div! {
         { flex; }
-        ["Title", $uim::div! { child: "Content"; }]
+        ["Title", $gds_uim::div! { child: "Content"; }]
     };
-    let _: gpui::Deferred = uim::div! { .gpui::deferred { priority: 1; } };
+    let _: gpui::Deferred = gds_uim::div! { .gpui::deferred { priority: 1; } };
 
-    let mut vector: gpui::Svg = uim::svg! {
+    let mut vector: gpui::Svg = gds_uim::svg! {
         path: "icons/confirm.svg";
         size: 16.0.px;
     };
-    let mut image: gpui::Img = uim::img! {
+    let mut image: gpui::Img = gds_uim::img! {
         ("images/avatar.png") { size: 32.0.px; }
     };
-    let _: gpui::Img = uim::img!("images/avatar.png");
+    let _: gpui::Img = gds_uim::img!("images/avatar.png");
     assert_eq!(vector.style().size.width, Some(px(16.0).into()));
     assert_eq!(image.style().size.height, Some(px(32.0).into()));
 }
 
 #[test]
 fn shortcuts_cover_wrappers_caches_and_virtual_lists() {
-    let _: gpui::Anchored = uim::anchored! {
+    let _: gpui::Anchored = gds_uim::anchored! {
         { anchor: gpui::Corner::TopLeft; }
         [#gpui::div]
     };
-    let _: gpui::Deferred = uim::deferred!(#gpui::div ["Content"]);
-    let _: gpui::Deferred = uim::deferred! {
+    let _: gpui::Deferred = gds_uim::deferred!(#gpui::div ["Content"]);
+    let _: gpui::Deferred = gds_uim::deferred! {
         (#gpui::div ["Content"]) { priority: 2; }
     };
 
     let provider = gpui::retain_all("image-cache");
-    let mut cache: gpui::ImageCacheElement = uim::image_cache! {
+    let mut cache: gpui::ImageCacheElement = gds_uim::image_cache! {
         (provider) { size: 32.0.px; } [#gpui::div]
     };
     assert_eq!(cache.style().size.width, Some(px(32.0).into()));
 
     let state = gpui::ListState::new(0, gpui::ListAlignment::Top, px(20.0));
-    let mut list: gpui::List = uim::list! {
-        (state, $|_, _, _| uim::div! {}.into_any_element()) { size: 20.0.px; }
+    let mut list: gpui::List = gds_uim::list! {
+        (state, $|_, _, _| gds_uim::div! {}.into_any_element()) { size: 20.0.px; }
     };
     assert_eq!(list.style().size.height, Some(px(20.0).into()));
 
-    let mut uniform: gpui::UniformList = uim::uniform_list! {
+    let mut uniform: gpui::UniformList = gds_uim::uniform_list! {
         ("uniform-list", 0, $|range, _, _| {
-            range.map(|_| uim::div! { size: 24.0.px; }).collect::<Vec<_>>()
+            range.map(|_| gds_uim::div! { size: 24.0.px; }).collect::<Vec<_>>()
         }) { size: 24.0.px; }
     };
     assert_eq!(uniform.style().size.height, Some(px(24.0).into()));
@@ -472,7 +536,7 @@ fn shortcuts_cover_wrappers_caches_and_virtual_lists() {
     // SurfaceSource is platform-specific and uninhabited on Linux. Check the
     // shortcut's signature without requiring a macOS video buffer.
     fn make_surface(source: gpui::SurfaceSource) -> gpui::Surface {
-        uim::surface! { (source) { size: 16.0.px; } }
+        gds_uim::surface! { (source) { size: 16.0.px; } }
     }
     let _make_surface: fn(gpui::SurfaceSource) -> gpui::Surface = make_surface;
 }
@@ -484,10 +548,10 @@ fn paints_a_canvas_from_shortcut_macros(cx: &mut TestAppContext) {
     let (_view, _visual) = cx.add_window_view(move |_, _| {
         TestView(Box::new(move || {
             let record_paint = record_paint.clone();
-            uim::div! {
+            gds_uim::div! {
                 { flex; }
                 [
-                    $uim::canvas! {
+                    $gds_uim::canvas! {
                         ::<Pixels>(
                             $|bounds, _, _| bounds.size.width,
                             $move |bounds, width, _, _| {

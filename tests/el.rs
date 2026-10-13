@@ -1,5 +1,5 @@
+use gds_uim::el as ui;
 use std::cell::Cell;
-use uim::el as ui;
 
 // These builders use GPUI's trait signatures without requiring a window or a
 // platform backend. Keep them move-only to catch accidental cloning or reuse.
@@ -318,6 +318,61 @@ fn applies_conditions_without_running_disabled_builders() {
             Child::Text("last".into()),
         ]
     );
+}
+
+#[test]
+fn conditional_arrows_support_dsl_values_rust_conditions_and_move_captures() {
+    mod conditions {
+        pub const ENABLED: bool = true;
+        pub fn enabled<T, U>() -> bool {
+            std::mem::size_of::<T>() <= std::mem::size_of::<U>()
+        }
+    }
+    fn invert(value: bool) -> bool {
+        !value
+    }
+
+    let disabled = false;
+    let value = 8.0;
+    let owned = String::from("moved");
+    let element = ui! {
+        List {
+            @conditions::ENABLED => {
+                flex;
+                @disabled.invert => { gap: value.px };
+            };
+            @$conditions::enabled::<u8, u16>() && !disabled => move { child: owned };
+            @true => {};
+            @true => move {}
+        } ["last"]
+    };
+    assert_eq!(element.calls, ["new", "flex", "gap(8)"]);
+    assert_eq!(
+        element.children,
+        [Child::Text("moved".into()), Child::Text("last".into())]
+    );
+}
+
+#[test]
+fn conditional_arrows_evaluate_conditions_once_and_skip_inactive_blocks() {
+    let conditions = Cell::new(0);
+    let attributes = Cell::new(0);
+    let evaluate = |enabled| {
+        conditions.set(conditions.get() + 1);
+        enabled
+    };
+
+    let element = List::new().map(gds_uim::m! {
+        @$evaluate(false) => {
+            @$evaluate(true) => { gap: ${ attributes.set(100); 0.0 } };
+        };
+        @$(evaluate(true)) => {
+            gap: ${ attributes.set(attributes.get() + 1); 6.0 };
+        };
+    });
+    assert_eq!(conditions.get(), 2);
+    assert_eq!(attributes.get(), 1);
+    assert_eq!(element.calls, ["new", "gap(6)"]);
 }
 
 #[test]
@@ -720,6 +775,124 @@ fn suffixes_wrap_complete_trees_and_preserve_wrapper_types() {
 }
 
 #[test]
+fn macro_suffixes_map_complete_trees_and_support_type_changing_chains() {
+    use gds_uim::m as mapping;
+
+    // No FluentBuilder or ParentElement implementation on the wrapper.
+    struct Frame(List);
+    impl Frame {
+        fn label(self, label: &str) -> Self {
+            Self(self.0.label(label))
+        }
+    }
+    fn frame(mut element: List) -> Frame {
+        element
+            .calls
+            .push(format!("frame({})", element.children.len()));
+        Frame(element)
+    }
+    fn finish(wrapped: Frame) -> List {
+        wrapped.0
+    }
+
+    let actual = ui! {
+        List ["first"]
+            .mapping! { child: "second"; map: $frame }
+            .gds_uim::m! { label: "mapped wrapper" }
+            { label: "configured wrapper" }
+            .finish
+            .::gds_uim::m![flex]
+            ["third"]
+    };
+    assert_eq!(
+        actual.calls,
+        [
+            "new",
+            "frame(2)",
+            "label(mapped wrapper)",
+            "label(configured wrapper)",
+            "flex"
+        ]
+    );
+    assert_eq!(
+        actual.children,
+        [
+            Child::Text("first".into()),
+            Child::Text("second".into()),
+            Child::Text("third".into())
+        ]
+    );
+}
+
+#[test]
+fn macro_suffixes_evaluate_the_input_and_callable_once_in_order() {
+    use std::cell::RefCell;
+
+    macro_rules! record {
+        ($events:expr, $payload:expr) => {{
+            $events.borrow_mut().push("make closure");
+            let events = &$events;
+            let payload = $payload;
+            move |element| {
+                events.borrow_mut().push("apply closure");
+                drop(payload);
+                element.flex()
+            }
+        }};
+    }
+
+    let events = RefCell::new(Vec::new());
+    let payload = String::from("consumed once");
+    let label = String::from("captured");
+    let actual = ui! {
+        $({ events.borrow_mut().push("element"); List::new() })
+            .record!(events, payload)
+            .gds_uim::m!(move { label: $label.as_str() })
+    };
+    assert_eq!(
+        *events.borrow(),
+        ["element", "make closure", "apply closure"]
+    );
+    assert_eq!(actual.calls, ["new", "flex", "label(captured)"]);
+}
+
+#[test]
+fn macro_suffixes_work_in_children_values_and_constructor_arguments() {
+    macro_rules! twice {
+        () => {
+            |value| value * 2.0
+        };
+    }
+    fn label(element: List) -> String {
+        element.calls.join(";")
+    }
+    fn identity<T>(value: T) -> T {
+        value
+    }
+
+    let actual = ui! {
+        List {
+            gap: 3.0.twice!().px;
+            owned_pair: #List::new.gds_uim::m! { flex }.label, $"right".to_owned();
+        } [
+            #identity(#List::new.gds_uim::m! { label: "argument" }),
+            List.gds_uim::m! { label: "child" },
+        ]
+    };
+    assert_eq!(
+        actual.calls,
+        ["new", "gap(6)", "owned_pair(new;flex, right)"]
+    );
+    assert_eq!(
+        actual.children,
+        [
+            Child::Element(List::new().label("argument")),
+            Child::Element(List::new().label("child"))
+        ]
+    );
+}
+
+#[test]
 fn multiple_arguments_and_fn_once_suffixes_are_evaluated_once_in_order() {
     let calls = Cell::new(0);
     let evaluate = |expected| {
@@ -762,4 +935,159 @@ fn multiple_arguments_and_fn_once_suffixes_are_evaluated_once_in_order() {
     }
     let constructor = ui! { argument_list::List(1.plus_one, $(2 + 1)) };
     assert_eq!(constructor.0.calls, ["new(2, 3)"]);
+}
+
+#[test]
+fn map_closures_share_attributes_conditions_and_value_syntax() {
+    use gds_uim::m as mapping;
+
+    // The macro's input binding must not shadow names from the caller.
+    let value = 7.0;
+    let enabled = true;
+    let skipped = Cell::new(0);
+    let actual = ui! {
+        List {
+            map: $mapping! {
+                flex;
+                gap: value.px;
+                set_pair(1, 2);
+                pair: $(3, 4);
+                @enabled: $mapping! { label: "selected" };
+                @false: $mapping! { gap: ${ skipped.set(skipped.get() + 1); 100.0 } };
+            };
+        }
+    };
+    assert_eq!(skipped.get(), 0);
+    assert_eq!(
+        actual.calls,
+        [
+            "new",
+            "flex",
+            "gap(7)",
+            "set_pair(1, 2)",
+            "pair(3, 4)",
+            "label(selected)"
+        ]
+    );
+}
+
+#[test]
+fn map_closures_defer_values_and_preserve_borrowed_captures() {
+    fn deferred(builder: impl FnMut(List) -> List) -> impl FnMut(List) -> List {
+        builder
+    }
+
+    let calls = Cell::new(0);
+    let label = String::from("borrowed");
+    let mut next = 0;
+    {
+        let mut builder = deferred(gds_uim::m! {
+            gap: ${
+                calls.set(calls.get() + 1);
+                next += 1;
+                next as f32
+            };
+            label: $label.as_str();
+        });
+        assert_eq!(calls.get(), 0);
+        assert_eq!(
+            builder(List::new()).calls,
+            ["new", "gap(1)", "label(borrowed)"]
+        );
+        assert_eq!(
+            builder(List::new()).calls,
+            ["new", "gap(2)", "label(borrowed)"]
+        );
+    }
+    assert_eq!(calls.get(), 2);
+    assert_eq!(next, 2);
+    assert_eq!(label, "borrowed");
+}
+
+#[test]
+fn map_closures_support_move_captures_empty_bodies_and_type_changes() {
+    fn owned_builder() -> impl FnOnce(List) -> List + 'static {
+        let left = String::from("left");
+        let right = String::from("right");
+        gds_uim::m!(move { owned_pair: left, right })
+    }
+
+    assert_eq!(List::new().map(gds_uim::m! {}), List::new());
+    assert_eq!(List::new().map(gds_uim::m!(move {})), List::new());
+    assert_eq!(
+        List::new().map(owned_builder()).calls,
+        ["new", "owned_pair(left, right)"]
+    );
+    let wrapped: Option<List> = List::new().map(gds_uim::m! { map: $Some });
+    assert_eq!(wrapped, Some(List::new()));
+}
+
+#[test]
+fn arrow_attributes_compose_nested_mappings_and_preserve_types() {
+    // Arrow attributes resolve m! through $crate, even when it is not imported.
+    let value = 9.0;
+    let calls = Cell::new(0);
+    let actual = ui! {
+        List {
+            label: "before";
+            map => {
+                flex;
+                map => {
+                    gap: value.px;
+                    set_pair: ${ calls.set(calls.get() + 1); 1 }, 2;
+                    @true: $gds_uim::m! { label: "nested" };
+                };
+                label: "after";
+            };
+            map => {};
+            map => move {}
+        } ["child"]
+    };
+    assert_eq!(calls.get(), 1);
+    assert_eq!(
+        actual.calls,
+        [
+            "new",
+            "label(before)",
+            "flex",
+            "gap(9)",
+            "set_pair(1, 2)",
+            "label(nested)",
+            "label(after)"
+        ]
+    );
+    assert_eq!(actual.children, [Child::Text("child".into())]);
+
+    let wrapped: Option<List> = ui! { List { map => { map: $Some } } };
+    assert_eq!(wrapped, Some(List::new()));
+}
+
+#[test]
+fn arrow_move_closures_own_captures_and_defer_evaluation() {
+    struct Deferred;
+    impl Deferred {
+        fn defer(self, builder: impl FnOnce(List) -> List + 'static) -> impl FnOnce(List) -> List {
+            builder
+        }
+    }
+
+    let calls = std::rc::Rc::new(Cell::new(0));
+    let builder = {
+        let record = calls.clone();
+        let label = String::from("owned");
+        ui! {
+            $(Deferred) {
+                defer => move {
+                    gap: ${ record.set(record.get() + 1); 12.0 };
+                    label: $label.as_str()
+                }
+            }
+        }
+    };
+    assert_eq!(calls.get(), 0);
+    assert_eq!(
+        builder(List::new()).calls,
+        ["new", "gap(12)", "label(owned)"]
+    );
+    assert_eq!(calls.get(), 1);
 }

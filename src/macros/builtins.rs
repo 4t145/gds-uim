@@ -3,7 +3,7 @@
 ///
 /// ```rust
 /// use gpui::{prelude::*, px};
-/// use uim::div;
+/// use gds_uim::div;
 ///
 /// let element = div! {
 ///     { flex; flex_col; gap: 6.0.px; }

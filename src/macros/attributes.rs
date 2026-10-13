@@ -56,6 +56,15 @@ macro_rules! __uim_attributes {
     (@attribute_tokens [$element:expr] [$($children:tt)*] [$($attr:tt)*] $($invalid:tt)*) => {
         compile_error!("el!: separate attributes with ; and method arguments with ,")
     };
+    (@attribute [$element:expr] $method:ident => { $($attrs:tt)* } ;) => {
+        ($element).$method($crate::m! { $($attrs)* })
+    };
+    (@attribute [$element:expr] $method:ident => move { $($attrs:tt)* } ;) => {
+        ($element).$method($crate::m!(move { $($attrs)* }))
+    };
+    (@attribute [$element:expr] $method:ident => $($invalid:tt)*) => {
+        compile_error!("el!: expected an attribute block after =>; use method => { attributes }; or method => move { attributes };")
+    };
     (@attribute [$element:expr] $method:ident : ;) => {
         compile_error!("el!: expected at least one argument after :; use method; for a zero-argument method")
     };
@@ -72,7 +81,7 @@ macro_rules! __uim_attributes {
         $crate::__uim_attributes!(@condition [$element] [] [] $($rest)*)
     };
     (@attribute [$element:expr] $($invalid:tt)*) => {
-        compile_error!("el!: expected method; method: args; or @condition: builder;")
+        compile_error!("el!: expected method; method: args; method => { attributes }; @condition: builder; or @condition => { attributes };")
     };
     (@condition [$element:expr] [$($children:tt)*] [$($condition:tt)*] :: $($rest:tt)*) => {
         $crate::__uim_attributes!(@condition [$element] [$($children)*] [$($condition)* ::] $($rest)*)
@@ -80,18 +89,34 @@ macro_rules! __uim_attributes {
     (@condition [$element:expr] [$($children:tt)*] [] : $($rest:tt)*) => {
         compile_error!("el!: expected a condition after @")
     };
+    (@condition [$element:expr] [$($children:tt)*] [] => $($rest:tt)*) => {
+        compile_error!("el!: expected a condition after @")
+    };
+    (@condition [$element:expr] [$($children:tt)*] [$($condition:tt)+]
+        => { $($attrs:tt)* } ;) => {
+        $crate::__uim_value!(@value [@condition_map [$element] [$crate::m! { $($attrs)* }]]
+            $($condition)+ ;)
+    };
+    (@condition [$element:expr] [$($children:tt)*] [$($condition:tt)+]
+        => move { $($attrs:tt)* } ;) => {
+        $crate::__uim_value!(@value [@condition_map [$element] [$crate::m!(move { $($attrs)* })]]
+            $($condition)+ ;)
+    };
+    (@condition [$element:expr] [$($children:tt)*] [$($condition:tt)+] => $($invalid:tt)*) => {
+        compile_error!("el!: expected an attribute block after =>; use @condition => { attributes }; or @condition => move { attributes };")
+    };
     (@condition [$element:expr] [$($children:tt)*] [$($condition:tt)+] : $($rest:tt)*) => {
         $crate::__uim_value!(@value [@condition_value [$element] [$($children)*] [$($rest)*]]
             $($condition)+ ;)
     };
     (@condition [$element:expr] [$($children:tt)*] [$($condition:tt)*] ; $($rest:tt)*) => {
-        compile_error!("el!: expected : builder after the condition")
+        compile_error!("el!: expected : builder or => { attributes } after the condition")
     };
     (@condition [$element:expr] [$($children:tt)*] [$($condition:tt)*] $next:tt $($rest:tt)*) => {
         $crate::__uim_attributes!(@condition [$element] [$($children)*] [$($condition)* $next] $($rest)*)
     };
     (@condition [$element:expr] [$($children:tt)*] [$($condition:tt)*]) => {
-        compile_error!("el!: expected : builder after the condition")
+        compile_error!("el!: expected : builder or => { attributes } after the condition")
     };
     ($($invalid:tt)*) => {
         compile_error!("el!: invalid attributes syntax")

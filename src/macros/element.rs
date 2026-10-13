@@ -6,9 +6,12 @@
 /// - Separate attributes with `;` and an attribute's arguments with `,`.
 /// - `flex;` calls `.flex()`; `gap: 6.0.px;` calls `.gap(px(6.0))`.
 /// - `method: a, b;` and `method(a, b);` call `.method(a, b)`.
+/// - `method => { attrs };` calls `.method(m! { attrs })`; `=> move` moves captures.
 /// - `@condition: builder;` calls `.when(condition, builder)`.
+/// - `@condition => { attrs };` calls `.when(condition, m! { attrs })`.
 /// - `[child, ..items]` calls `.child(child).children(items)`.
 /// - `#div [children].deferred` calls `deferred(div().children(...))`.
+/// - `#div [children].m! { attrs }` applies a macro-generated closure to the tree.
 ///
 /// Bare values are DSL literals, variable names, or module paths. `a.b`
 /// applies `b(a)`; successive suffixes run from left to right. Function paths
@@ -23,11 +26,13 @@
 ///
 /// `$expression` extends to the next argument/child delimiter. Use `$(...)`
 /// to establish a boundary before DSL suffixes or element bodies. Rust blocks,
-/// tuples, calculations, indexing, calls, and macros also need `$`.
+/// tuples, calculations, indexing, calls, and macros also need `$` in value
+/// positions. Suffix macros use `.macro! { ... }` directly and must produce a
+/// unary callable; its result can have further attributes, children, or suffixes.
 ///
 /// ```rust
 /// use gpui::{deferred, div, prelude::*, px};
-/// use uim::el;
+/// use gds_uim::el;
 ///
 /// let show_details = true;
 /// let rest = vec![div(), div()];
@@ -173,6 +178,11 @@ macro_rules! __uim_element {
         $crate::__uim_element!(@scan [@rust_node [$($context)*]]
             [$($tokens)+ ! $body] [] $($rest)*)
     };
+    (@scan [@unary [$($context:tt)*] [$element:expr]] [$($function:tt)+] []
+        ! $body:tt $($rest:tt)*) => {
+        $crate::__uim_element!(@stage [$($context)*]
+            [$crate::__uim_apply($element, $($function)+!$body)] $($rest)*)
+    };
     (@scan [@factory [$($context:tt)*]] [$($function:tt)+] []
         ($($args:tt)*) $($rest:tt)*) => {
         $crate::__uim_element!(@factory_args [$($context)*] [$($function)+]
@@ -236,7 +246,7 @@ macro_rules! __uim_element {
     };
     (@scan_end [@unary [$($context:tt)*] [$element:expr]]
         [$($invalid:tt)*] $($rest:tt)*) => {
-        compile_error!("el!: expected a unary function path after .; suffix functions receive the preceding value")
+        compile_error!("el!: expected a unary function path or a macro producing a unary callable after .; suffixes receive the preceding value")
     };
     (@scan_end [$($context:tt)*] [$($invalid:tt)*] $($rest:tt)*) => {
         compile_error!("el!: expected a DSL literal or path; prefix Rust expressions with $")

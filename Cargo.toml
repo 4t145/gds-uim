@@ -1,5 +1,5 @@
 [package]
-name = "uim"
+name = "gds-uim"
 version = "0.1.0"
 edition = "2024"
 
@@ -10,4 +10,8 @@ gpui = { version = "0.2.2", default-features = false, features = ["test-support"
 
 [[example]]
 name = "clicker"
+test = true
+
+[[example]]
+name = "task_board"
 test = true
