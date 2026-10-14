@@ -408,6 +408,123 @@ fn mixes_spreads_with_expression_children() {
 }
 
 #[test]
+fn grouped_control_flow_and_indexing_are_rust_children() {
+    for selected in [false, true] {
+        let evaluated = Cell::new(0);
+        let labels = ["indexed"];
+        let index = || {
+            evaluated.set(evaluated.get() + 1);
+            0
+        };
+        let expected = if selected { "selected" } else { "other" };
+        let element = ui! {
+            List {
+                label: $match selected { true => "selected", false => "other" };
+            } [
+                $(match selected {
+                    true => "selected",
+                    false => "other",
+                }),
+                $(labels[index()]),
+                $(if selected { "selected" } else { "other" }),
+                $({ evaluated.set(evaluated.get() + 1); "block" }),
+            ]
+        };
+
+        assert_eq!(evaluated.get(), 2);
+        assert_eq!(element.calls, ["new", &format!("label({expected})")]);
+        assert_eq!(
+            element.children,
+            [expected, "indexed", expected, "block"].map(|text| Child::Text(text.to_owned()))
+        );
+    }
+}
+
+#[test]
+fn grouped_match_can_be_followed_by_dsl_stages() {
+    let finish = |element: List| element.flex_col();
+    let selected = Some(List::new());
+    let element = ui! {
+        List [
+            $(match selected {
+                Some(element) => element,
+                None => panic!("unselected branch must not run"),
+            }) { label: "match"; } ["child"].finish { gap: 4.0.px; },
+        ]
+    };
+
+    assert_eq!(
+        element.children,
+        [Child::Element(
+            List::new()
+                .label("match")
+                .child("child")
+                .flex_col()
+                .gap(4.0)
+        )]
+    );
+}
+
+#[test]
+fn preserves_temporary_borrows_across_children_and_spreads() {
+    struct Borrowed<'a>(Vec<&'a str>);
+
+    impl<'a> Borrowed<'a> {
+        fn new() -> Self {
+            Self(Vec::new())
+        }
+
+        fn child(mut self, text: &'a str) -> Self {
+            self.0.push(text);
+            self
+        }
+
+        fn children(mut self, values: impl IntoIterator<Item = &'a str>) -> Self {
+            self.0.extend(values);
+            self
+        }
+
+        fn into_string(self) -> String {
+            self.0.join("/")
+        }
+    }
+
+    fn borrowed(text: &str) -> Borrowed<'_> {
+        Borrowed(vec![text])
+    }
+
+    let text = ui! {
+        #borrowed($&String::from("constructor")) ["child"]
+    }
+    .into_string();
+    assert_eq!(text, "constructor/child");
+
+    let text = ui! {
+        #borrowed($&String::from("empty-attributes")) { ;; } ["child"]
+    }
+    .into_string();
+    assert_eq!(text, "empty-attributes/child");
+
+    let text = ui! {
+        Borrowed [
+            $String::from("child").as_str(),
+            ..$[String::from("spread").as_str()],
+        ]
+    }
+    .into_string();
+    assert_eq!(text, "child/spread");
+
+    let text = ui! {
+        Borrowed() {} [
+            $String::from("child").as_str(),
+            ..$[String::from("spread").as_str()],
+        ]
+    }
+    .into_string();
+    assert_eq!(text, "child/spread");
+}
+
+#[test]
 fn evaluates_constructors_attributes_and_spreads_once() {
     let calls = Cell::new(0);
     let evaluate = || {

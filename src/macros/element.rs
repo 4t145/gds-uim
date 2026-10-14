@@ -24,11 +24,14 @@
 /// that wrapper. Bare child names denote constructors; use `$child` for an
 /// existing element. Constructor arguments use the same DSL values as attributes.
 ///
-/// `$expression` extends to the next argument/child delimiter. Use `$(...)`
-/// to establish a boundary before DSL suffixes or element bodies. Rust blocks,
-/// tuples, calculations, indexing, calls, and macros also need `$` in value
-/// positions. Suffix macros use `.macro! { ... }` directly and must produce a
-/// unary callable; its result can have further attributes, children, or suffixes.
+/// `$expression` extends to the next argument/child delimiter. In element and
+/// child positions, top-level braces and brackets start DSL attributes and children.
+/// Use `$(match ... { ... })`, `$(if ... { ... })`, or `$(items[index])` when
+/// those groups belong to Rust, and `$(...)` before DSL suffixes or element bodies.
+/// Rust blocks, tuples, calculations, indexing, calls, and macros also need `$`
+/// in value positions. Suffix macros use `.macro! { ... }` directly and must
+/// produce a unary callable; its result can have further attributes, children,
+/// or suffixes.
 ///
 /// ```rust
 /// use gpui::{deferred, div, prelude::*, px};
@@ -62,6 +65,41 @@ macro_rules! el {
 #[doc(hidden)]
 #[macro_export]
 macro_rules! __uim_element {
+    // Completed, non-generic tree nodes need no path, stage, or suffix scan.
+    (@node [$($context:tt)*] # $($path:ident)::+ $(())?
+        { $(;)* } [ $($children:tt)* ] , $($rest:tt)*) => {
+        $crate::__uim_emit!(@emit [$($context)*]
+            [$crate::__uim_children!(@children [$($path)::+()] $($children)* ,)] , $($rest)*)
+    };
+    (@node [$($context:tt)*] # $($path:ident)::+ $(())?
+        { $($attrs:tt)* } [ $($children:tt)* ] , $($rest:tt)*) => {
+        $crate::__uim_emit!(@emit [$($context)*] [{
+            let element = $crate::__uim_attributes!(@attributes [$($path)::+()] [] $($attrs)* ;);
+            $crate::__uim_children!(@children [element] $($children)* ,)
+        }] , $($rest)*)
+    };
+    (@node [$($context:tt)*] # $($path:ident)::+ $(())?
+        [ $($children:tt)* ] , $($rest:tt)*) => {
+        $crate::__uim_emit!(@emit [$($context)*]
+            [$crate::__uim_children!(@children [$($path)::+()] $($children)* ,)] , $($rest)*)
+    };
+    (@node [$($context:tt)*] $($path:ident)::+ $(())?
+        { $(;)* } [ $($children:tt)* ] , $($rest:tt)*) => {
+        $crate::__uim_emit!(@emit [$($context)*]
+            [$crate::__uim_children!(@children [$($path)::+::new()] $($children)* ,)] , $($rest)*)
+    };
+    (@node [$($context:tt)*] $($path:ident)::+ $(())?
+        { $($attrs:tt)* } [ $($children:tt)* ] , $($rest:tt)*) => {
+        $crate::__uim_emit!(@emit [$($context)*] [{
+            let element = $crate::__uim_attributes!(@attributes [$($path)::+::new()] [] $($attrs)* ;);
+            $crate::__uim_children!(@children [element] $($children)* ,)
+        }] , $($rest)*)
+    };
+    (@node [$($context:tt)*] $($path:ident)::+ $(())?
+        [ $($children:tt)* ] , $($rest:tt)*) => {
+        $crate::__uim_emit!(@emit [$($context)*]
+            [$crate::__uim_children!(@children [$($path)::+::new()] $($children)* ,)] , $($rest)*)
+    };
     (@node [$($context:tt)*] # $($path:ident)::+ ($($args:tt)*) $($rest:tt)*) => {
         $crate::__uim_element!(@construct [$($context)*] [$($path)::+] [$($args)*] [$($rest)*])
     };
@@ -126,11 +164,34 @@ macro_rules! __uim_element {
     (@constructor_value [$function:path] [$($args:tt)*]) => {
         $crate::__uim_value!(@arguments [@constructor [$function]] [] $($args)* ;)
     };
+    // A comma completes the node: skip suffix parsing when there is no suffix.
+    // Nonempty attributes already introduce a block; finish their expansion before
+    // expanding children. Empty attributes must not shorten temporary lifetimes.
+    (@stage [$($context:tt)*] [$element:expr]
+        { $(;)* } [ $($children:tt)* ] $($rest:tt)*) => {
+        $crate::__uim_element!(@stage [$($context)*] [$element] [ $($children)* ] $($rest)*)
+    };
+    (@stage [$($context:tt)*] [$element:expr]
+        { $($attrs:tt)* } [ $($children:tt)* ] , $($rest:tt)*) => {
+        $crate::__uim_emit!(@emit [$($context)*] [{
+            let element = $crate::__uim_attributes!(@attributes [$element] [] $($attrs)* ;);
+            $crate::__uim_children!(@children [element] $($children)* ,)
+        }] , $($rest)*)
+    };
+    (@stage [$($context:tt)*] [$element:expr] { $($attrs:tt)* } , $($rest:tt)*) => {
+        $crate::__uim_emit!(@emit [$($context)*]
+            [$crate::__uim_attributes!(@attributes [$element] [] $($attrs)* ;)] , $($rest)*)
+    };
+    (@stage [$($context:tt)*] [$element:expr] [ $($children:tt)* ] , $($rest:tt)*) => {
+        $crate::__uim_emit!(@emit [$($context)*]
+            [$crate::__uim_children!(@children [$element] $($children)* ,)] , $($rest)*)
+    };
     (@stage [$($context:tt)*] [$element:expr]
         { $($attrs:tt)* } [ $($children:tt)* ] $($rest:tt)*) => {
-        $crate::__uim_element!(@suffix [$($context)*]
-            [$crate::__uim_attributes!(@attributes [$element] [$($children)*] $($attrs)* ;)]
-            $($rest)*)
+        $crate::__uim_element!(@suffix [$($context)*] [{
+            let element = $crate::__uim_attributes!(@attributes [$element] [] $($attrs)* ;);
+            $crate::__uim_children!(@children [element] $($children)* ,)
+        }] $($rest)*)
     };
     (@stage [$($context:tt)*] [$element:expr] { $($attrs:tt)* } $($rest:tt)*) => {
         $crate::__uim_element!(@suffix [$($context)*]

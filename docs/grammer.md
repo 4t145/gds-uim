@@ -105,8 +105,27 @@ Rust 表达式由 `$` 引入。`$a.b` 是 Rust 字段访问；`$calculate()` 是
 调用；`$move |event, window, cx| { ... }` 中的整个闭包都是 Rust，闭包内部不再
 使用 DSL。运算、元组、代码块、索引、宏调用、条件表达式同样需要 `$`。
 
-`$expression` 持续到下一个参数或子元素分隔符。`$(expression)` 将括号中的
-内容完整交给 Rust，然后返回 DSL；需要继续接后缀函数时使用这个明确边界：
+在属性参数位置，`$expression` 持续到下一个参数分隔符。在元素／子元素位置，
+顶层 `{...}` 和 `[...]` 则会结束 `$expression`，开始 DSL 属性块或子元素列表；
+这保留了 `$factory() { flex; } ["child"]` 的组合写法。
+
+当这些分组属于 Rust 时，使用 `$(expression)` 将整个表达式交给 Rust：
+`$(match value { ... })`、`$(if condition { ... } else { ... })`、
+`$({ ... })`、`$(items[index])`、`$(Type { field: value })`。
+不要在子元素位置依赖 `$match ...`、`$if ...` 或 `$items[index]` 的自动识别。
+展开列表 `..$expression` 和属性参数一样按参数分隔符解析。
+
+```rust
+el! {
+    #div [
+        $(match selected { true => "selected", false => "other" }),
+        $(labels[index]),
+        $(match selected { true => div(), false => div() }) { flex; } ["child"],
+    ]
+}
+```
+
+括号后返回 DSL；需要继续接后缀函数时也使用这个明确边界：
 
 ```rust
 el! {
@@ -324,8 +343,10 @@ cargo run --locked --example task_board
 和重置，并检查最小窗口尺寸下列表与详情面板的布局。
 
 内部解析器在 `src/macros` 中按元素、属性、值、子元素和完成回调拆成独立宏。
-属性与子宏通过局部构建器绑定独立展开，避免将整个嵌套树串成一次长递归；
-clicker 在 Rust 默认递归上限下编译，不需要额外设置 `recursion_limit`。
+属性与子树独立展开，完整节点跳过多余的后缀扫描，减少已完成阶段增加的
+递归深度。clicker 和 32 层带属性元素树的回归测试在 Rust 默认递归上限下
+编译，不需要额外设置 `recursion_limit`。这不是无限深度保证；
+实现约束和测试范围见 [宏展开阶段](expansion.md)。
 
 `Cargo.lock` 使用兼容的 `libc` 0.2.186；GPUI 0.2.2 间接依赖的旧版 `xattr`
 引用了新版本 `libc` 已移除的常量。Linux 构建需要 GPUI 的系统开发库，包含

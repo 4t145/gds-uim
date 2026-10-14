@@ -3,6 +3,12 @@
 #[macro_export]
 macro_rules! __uim_emit {
     (@emit [@root] [$element:expr] , $(,)?) => { $element };
+    (@emit [@child [$parent:expr]] [$element:expr] , $(,)?) => {
+        ($parent).child($element)
+    };
+    (@emit [@spread [$parent:expr]] [$elements:expr] , $(,)?) => {
+        ($parent).children($elements)
+    };
     (@emit [@child [$parent:expr]] [$element:expr] , $($rest:tt)*) => {
         $crate::__uim_children!(@children [($parent).child($element)] $($rest)*)
     };

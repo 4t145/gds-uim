@@ -21,6 +21,11 @@ let element = el! {
 `function(value)`，Rust 表达式通过 `$` 引入，例如 `$theme.surface`、
 `$move |event, window, cx| { ... }`。
 
+在元素和子元素位置，顶层 `{...}` / `[...]` 是 DSL 属性块和子元素列表；
+Rust 的 `match`、`if`、代码块、数组与索引请用 `$(...)` 明确边界，例如
+`#div [$(match selected { true => "yes", false => "no" }), $(labels[0])]`。
+括号之后仍可继续配置 DSL 属性、子元素和后缀。
+
 `m!` 可以用于 `hover`、`active`、`focus` 等样式回调，也可以传给 `when`、
 `map` 来修改元素。属性块里的 `method => { ... }` 等价于
 `method: $m! { ... }`，可以嵌套使用：
@@ -85,3 +90,5 @@ cargo fmt --check
 完整语法见 [docs/grammer.md](docs/grammer.md)。解析器按职责拆分在
 [src/macros](src/macros)，clicker 使用 Rust 默认递归上限。
 库没有运行时依赖；元素工厂、构建器 trait 和值转换函数由调用方提供。
+属性与子树独立展开，完整节点跳过多余的后缀扫描；32 层带属性元素树有默认递归上限回归测试，
+展开结构与求值顺序约束见 [docs/expansion.md](docs/expansion.md)。

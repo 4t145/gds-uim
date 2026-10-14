@@ -3,6 +3,7 @@
 #[doc(hidden)]
 #[macro_export]
 macro_rules! __uim_attributes {
+    (@attributes [$element:expr] [] $(;)*) => { $element };
     (@attributes [$element:expr] [$($children:tt)*]) => {
         $crate::__uim_children!(@children [$element] $($children)* ,)
     };
