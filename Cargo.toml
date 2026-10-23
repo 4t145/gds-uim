@@ -3,7 +3,12 @@ name = "gds-uim"
 version = "0.1.0"
 edition = "2024"
 
+[workspace]
+members = ["macros"]
+resolver = "3"
+
 [dependencies]
+gds-uim-macros = { version = "0.1.0", path = "macros" }
 
 [dev-dependencies]
 gpui = { version = "0.2.2", default-features = false, features = ["test-support"] }

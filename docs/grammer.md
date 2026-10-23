@@ -1,353 +1,431 @@
-```rust
-el! {
-    List { // List::new()
-        flex;
-        flex_col;
-        gap: 8.0.px;
-        @condition: $|element| element.child("dynamic");
-    } [
-        Button with_label("confirm") {
-            label: "确定";
-        },
-        ..rest,
-    ]
-}
+# UIM 语法
 
-el! {
-    List(a, b) { // List::new(a, b)
-        flex;
-    }
-}
-
-el! {
-    List() { // List::new()
-        flex;
-    }
-}
-
-el! {
-    List []
-}
-
-el! {
-    List
-}
-```
-
-通过 `use gds_uim::el;` 导入宏。元素、函数和扩展 trait 由调用方提供；使用
-GPUI 时，通常需要导入 `gpui::prelude::*`。宏本身没有 GPUI 依赖。
-
-属性用分号 `;` 分隔，同一属性的参数用逗号 `,` 分隔。子元素和构造器参数
-也用逗号分隔。最后一个属性的分号、最后一个参数或子元素的逗号均可省略。
-
-第一个例子等价于：
+`el!` 将表达式、属性和子元素组合成普通 Rust 构建器调用。元素、已有值、
+构造器参数和属性参数使用同一套表达式语法。裸类型名不隐式调用 `Type::new()`。
 
 ```rust
-List::new()
-    .flex()
-    .flex_col()
-    .gap(px(8.0))
-    .when(condition, |element| element.child("dynamic"))
-    .child(Button::with_label("confirm").label("确定"))
-    .children(rest)
-```
-
-`{属性}` 和 `[子元素]` 均可省略或为空。每个阶段先应用属性，再添加子元素，
-然后才应用后缀包装。各阶段、参数和子元素按书写顺序求值，每个值只求值一次；
-构建方法和包装函数可以改变返回类型。
-
-元素类型支持 `widgets::List` 这样的路径。`List`、`List()` 调用无参数
-`List::new()`；`List(a, b)` 调用 `List::new(a, b)`；
-`Button with_label("confirm")` 调用指定构造器。
-
-`#` 表示工厂函数调用：`#div` 和 `#div()` 均调用 `div()`，`#img(source)`
-调用 `img(source)`。支持模块路径和泛型，例如 `#gpui::div`、
-`#make::<T>(value)`。工厂节点后面也可以接属性和子元素。
-
-```rust
-use gpui::{div, prelude::*, px};
 use gds_uim::el;
-
-let show_details = true;
-let existing = div().child("已有元素");
-let rest = vec![div(), div()];
-
-let element = el! {
-    #div {
-        flex;
-        flex_col;
-        gap: 8.0.px;
-        @show_details: $|element| element.child("详情");
-    } [
-        "标题",
-        $existing,
-        #div { flex; } ["嵌套内容"],
-        ..rest,
-    ]
-};
-```
-
-值默认使用 DSL 语法。字面量、变量名和模块路径可以直接写；`value.function`
-将左侧值传给右侧一元函数，连续后缀从左到右执行。这里的 `.` 表示函数应用。
-
-| 写法 | 含义 |
-| --- | --- |
-| `6.0`、`"标题"`、`true` | 字面量 |
-| `spacing`、`MouseButton::Left` | 变量或模块路径 |
-| `6.0.px` | `px(6.0)` |
-| `spacing.px` | `px(spacing)` |
-| `a.b` | `b(a)` |
-| `value.f.g` | `g(f(value))` |
-| `value.gpui::px` | `gpui::px(value)` |
-| `value.convert::<T>` | `convert::<T>(value)` |
-
-Rust 表达式由 `$` 引入。`$a.b` 是 Rust 字段访问；`$calculate()` 是 Rust
-调用；`$move |event, window, cx| { ... }` 中的整个闭包都是 Rust，闭包内部不再
-使用 DSL。运算、元组、代码块、索引、宏调用、条件表达式同样需要 `$`。
-
-在属性参数位置，`$expression` 持续到下一个参数分隔符。在元素／子元素位置，
-顶层 `{...}` 和 `[...]` 则会结束 `$expression`，开始 DSL 属性块或子元素列表；
-这保留了 `$factory() { flex; } ["child"]` 的组合写法。
-
-当这些分组属于 Rust 时，使用 `$(expression)` 将整个表达式交给 Rust：
-`$(match value { ... })`、`$(if condition { ... } else { ... })`、
-`$({ ... })`、`$(items[index])`、`$(Type { field: value })`。
-不要在子元素位置依赖 `$match ...`、`$if ...` 或 `$items[index]` 的自动识别。
-展开列表 `..$expression` 和属性参数一样按参数分隔符解析。
-
-```rust
-el! {
-    #div [
-        $(match selected { true => "selected", false => "other" }),
-        $(labels[index]),
-        $(match selected { true => div(), false => div() }) { flex; } ["child"],
-    ]
-}
-```
-
-括号后返回 DSL；需要继续接后缀函数时也使用这个明确边界：
-
-```rust
-el! {
-    #div {
-        gap: $(theme.spacing).px;
-        w: $(width + 8.0).px;
-        bg: $theme.surface;
-    }
-}
-```
-
-`$(...)` 的括号限定 Rust 表达式的范围。例如，完整的 Rust 方法链写
-`$(items[index].clone())`，而 `$(items[index]).convert` 调用自由函数
-`convert(items[index])`。不带 `$` 的括号只用于 DSL 分组。
-
-属性多参数写成 `method: a, b;`。`method(a, b);` 形式也支持，参数使用相同的
-值规则。元组作为一个参数时需要 `$(a, b)`：
-
-```rust
-el! {
-    #div {
-        id: "button";
-        size: 40.0.px;
-        on_mouse_down: MouseButton::Left, $move |event, window, cx| {
-            // Rust 回调，参数列表中的逗号不会拆成属性参数。
-        };
-        on_click: $move |event, window, cx| {
-            // Rust 回调。
-        };
-    }
-}
-```
-
-`@condition: builder;` 调用 `.when(condition, builder)`。条件和 builder 使用
-相同的值规则；条件为假时不会执行 builder。复杂条件以 `$` 开头：
-
-```rust
-el! {
-    List {
-        @$state.show_details && settings::ENABLED:
-            $|list| list.child("详情");
-        when_else: enabled,
-            $|list| list.flex(),
-            $|list| list.flex_col();
-    }
-}
-```
-
-`m! { 属性 }` 中的 `m` 表示 map，生成修改构建器的一元闭包，复用上述所有
-属性和值语法。例如 `m! { bg: 0x818cf8.rgb }` 等价于
-`|value| value.bg(rgb(0x818cf8))`。
-闭包参数类型由调用位置推断，不固定为 `StyleRefinement`，也没有添加 GPUI
-依赖；调用方仍需导入相关 trait 和转换函数。
-
-```rust
 use gpui::{div, prelude::*, px, rgb};
-use gds_uim::{el, m};
 
 let selected = true;
+let loading = false;
 let element = el! {
-    #div {
-        id: "button";
-        hover => { bg: 0x818cf8.rgb; text_color: 0xffffff.rgb };
-        active => { bg: 0x6366f1.rgb };
-        focusable;
-        focus => { border_2; border_color: 0xffffff.rgb };
-        @selected => { bg: 0x334155.rgb };
-    }
-};
-let padded = div().map(m! { p: 8.0.px; rounded_lg });
-```
-
-属性块内的 `method => { 属性 };` 等价于 `method: $m! { 属性 };`，适用于
-接受一个构建器闭包的方法，无需单独导入 `m`。它在 `el!` 和 `m!` 内均可使用，
-支持嵌套，例如 `map => { hover => { bg: 0x818cf8.rgb } }`。
-属性仍以分号分隔，最后一个分号可省略。`method => {}` 传入返回原值的闭包。
-`method => move { 属性 };` 等价于 `method: $m!(move { 属性 });`。
-多参数方法继续使用显式参数，例如 `group_hover: "group", $m! { bg: color };`。
-
-条件同样可以写成 `@condition => { 属性 };`，等价于
-`@condition: $m! { 属性 };`，最终调用 `.when(condition, 闭包)`。
-`@condition => move { 属性 };` 使用移动捕获。条件只求值一次，条件为假时
-不会执行块内的属性。模块路径、DSL 转换和 `$` Rust 条件仍沿用原有值语法：
-
-```rust
-@selected => { border_color: ACCENT.rgb };
-@$state.selected && !state.disabled => { border_1 };
-@settings::ENABLED => move { font_family: font };
-```
-
-`ACCENT.rgb` 调用 `rgb(ACCENT)`，而 `$ACCENT.rgb` 表示 Rust 字段访问；
-用 Rust 写颜色转换应使用 `$rgb(ACCENT)`。
-
-`m!` 内可嵌套条件，例如 `m! { @selected => { border_1 }; }`。
-最后一个分号可以省略，`m! {}` 返回输入本身。属性表达式在闭包执行时求值，
-被跳过的条件分支不会求值。默认按 Rust 闭包规则捕获变量；需要强制转移捕获
-变量的所有权时，写成 `m!(move { font_family: font })`。
-
-`m!` 生成普通 Rust 闭包，单个闭包实例只有一种参数类型。通常直接传给接收
-闭包的 API；要在函数间复用，可由函数返回 `impl FnOnce(T) -> T`。需要额外
-回调参数（例如 `when_some` 的值）时，仍可使用 `$|element, value| ...`。
-
-元素后缀也使用一元函数应用。`#div.deferred` 调用 `deferred(div())`；
-有属性和子元素时，将后缀写在完整元素之后。后缀后的属性配置包装结果：
-
-```rust
-use gpui::{deferred, div, prelude::*, px};
-use gds_uim::el;
-
-let element = el! {
-    #div { gap: 6.0.px; } [
-        "内容",
-    ].deferred {
-        priority: 1;
-    }
+    .div {
+        # "root";
+        flex;
+        gap: 8.0.px;
+        hover: { bg: 0x818cf8.rgb };
+        when: selected, { border_1 };
+    } [
+        @if (loading)
+            "加载中",
+        @else
+            .div { # "child"; w: 100.0.px } ["Hello"],
+        @end,
+    ]
 };
 ```
 
-这等价于 `deferred(div().gap(px(6.0)).child("内容")).priority(1)`。
-`element.first.second` 依次调用 `second(first(element))`。
-后缀接受一元函数路径，也接受返回一元可调用值的宏，不支持额外调用实参。
+`@` 专用于控制指令。属性调用统一写 `method: args`，闭包是普通参数值。
+`=>` 专用于定义带显式参数的 UIM 闭包；match 分支用 `@case (...)`。
 
-例如 `.m! { 属性 }` 将完整元素传给 `m!` 生成的闭包：
+## 表达式与调用
 
-```rust
-use gpui::{deferred, div, prelude::*, rgb};
-use gds_uim::{el, m};
+`.` 表示将左侧结果传给右侧可调用值，连续调用从左到右结合。
 
-let element = el! {
-    #div { id: "reset"; } ["Reset"]
-        .m! { rounded_lg; hover => { bg: 0x475569.rgb } }
-        .deferred
-        .m! { priority: 1 }
-};
+| DSL | Rust 含义 |
+| --- | --- |
+| `value` | 已有值，不隐式调用构造器 |
+| `.div`、`().div` | `div()` |
+| `(a, b).f` | `f(a, b)` |
+| `a.f`、`(a).f` | `f(a)` |
+| `a.f.g` | `g(f(a))` |
+| `1.0.px` | `px(1.0)` |
+| `value.convert::<T>` | `convert::<T>(value)` |
+| `value.$(make_handler())` | 先求 value，再生成 handler，最后调用 handler |
+| `value.{ flex }` | 将 value 传给裸块生成的闭包 |
+| `value.m! { flex }` | 将 value 传给宏生成的闭包 |
+
+调用位置接受函数、关联函数、函数指针、闭包、控制表达式和返回可调用值的宏。
+参数个数、可调用性与类型匹配交给 Rust 检查。单参数优先写
+`"ok".Button::with_label`，多参数写 `(a, b).Widget::with_size`，无参数写 `.f`。
+参数列表可以为空，末尾逗号可省略。
+
+`(a, b).f` 是调用，`(a, b) => body` 是闭包定义，由右括号后的符号区分。
+单独 `(a, b)` 不表示元组或 DSL 分组；Rust 元组写成 `$(a, b)`：
+
+```text
+(a, b).f    → f(a, b)
+$(a, b).f   → f((a, b))
+().f        → f()
+$().f       → f(())
 ```
 
-先构建前面的属性和子元素，再求值后缀宏并调用闭包，各阶段只执行一次。
-闭包参数类型由前一阶段的结果推断，可以改变返回类型，后面也可以继续接
-`{属性}`、`[子元素]` 或其他后缀。
+值支持 Rust 字面量、路径、宏调用、Rust 转义、`~value`、闭包和控制表达式。
+路径包括模块路径、`::<...>` 泛型参数和 `<T as Trait>::item`。
+负数字面量可以直接写，普通值位置的其他运算放进 Rust 转义。
 
-后缀宏无需 `$` 前缀，但需要正常导入宏，或者使用 `.gds_uim::m! { ... }` 这样的
-限定路径。别名宏也可用；需要移动捕获时写 `.m!(move { ... })`。这个规则
-同样适用于其他返回一元闭包或函数的宏，以及属性值和构造器参数中的后缀。
+数字遵循 Rust 词法：`1.px` 可以直接写；整数后接 `$`、`~`、`{` 等符号
+开头的可调用值时，在点前留空格，例如 `1 .$(handler)`。
+紧贴的 `1.$(...)` 会先被 Rust 读成浮点字面量 `1.`，失去 DSL 的点。
 
-子元素列表中的裸类型名 `Button` 表示 `Button::new()`；`#render_item` 调用
-工厂，`$existing` 插入已有元素。字符串可以直接写；Rust 代码块、`if`、
-宏调用等以 `$` 引入。`..items` 展开可迭代值，也可以使用 Rust 表达式或 DSL
-转换函数：
+## Rust 表达式与宏
+
+`$(...)` 将整个括号作为 Rust 括号表达式或元组解析，然后返回 DSL。
+括号内支持字段访问、方法调用、运算、闭包、代码块、`if`、索引等。
+也接受不带括号的 `$rust-expr`，这时从 `$` 后开始解析一个完整 Rust 表达式：
+
+```text
+theme.spacing             → spacing(theme)
+$theme.spacing            → Rust 字段访问
+$(theme.spacing)          → Rust 字段访问，然后返回 DSL
+$(theme.spacing + 4.0).px  → px(theme.spacing + 4.0)
+$move |event, window, cx| { /* Rust */ }
+```
+
+裸 `$` 后的字段、方法、索引、运算和闭包内部的逗号均按 Rust 规则解析，不作为
+DSL 后缀或参数分隔符。要在 Rust 结果后接 DSL 函数、属性或 children，使用
+`$(...)` 明确边界，特别是 `$value { ... }` 可能成为 Rust 结构体表达式，
+`$value[...]` 会成为 Rust 索引。`$(value) { attrs } [children]` 没有这个歧义。
+`$` 后立即跟圆括号时总是选择隔离形式；例如 `$(a).f` 是 DSL 调用 `f(a)`。
+
+Rust 区域内部不解释 UIM；需要时显式嵌套 `el!` 或 `m!`。在 Rust 区域中，
+花括号仍是普通 Rust 块。宏调用本身就是值，无需 `$`，支持三种括号及限定路径：
+
+```rust
+el! { .div [format!("count: {}", count)].gds_uim::m! { p: 8.0.px } }
+```
+
+宏后的第一对括号属于宏，后续 `{...}` 才是属性后缀。宏参数交给该宏处理，
+不会扫描其中的 `@` 标记或 `=>`。
+
+## 闭包
+
+### 裸属性块
+
+**值位置**的 `{ attrs }` 生成一个接收 builder 并返回配置结果的闭包；
+`move { attrs }` 使用移动捕获，空块 `{}` 是返回输入的恒等闭包：
+
+```text
+{ flex; gap: 8.0.px } → |this| this.flex().gap(px(8.0))
+move { child: label } → move |this| this.child(label)
+```
+
+因此 `hover`、`when`、`map` 都是普通方法调用，无需各自的宏语法：
 
 ```rust
 el! {
-    #div [
-        $existing,
-        $(if enabled { div() } else { div().hidden() }),
-        $concat!("标", "题"),
-        ..rest,
-        ..$items.into_iter().map(render_item),
+    .div {
+        hover: { bg: hover_color };
+        when: enabled, move { child: label };
+        map: { flex; gap: 8.0.px };
+    }
+}
+```
+
+**后缀位置**的 `value { attrs }` 仍直接展开为方法链。
+`value.{ attrs }` 和 `value.m! { attrs }` 则创建并调用一个闭包。
+简单配置得到相同结果，但后两者具有闭包作用域，会影响 Rust 转义内的
+`return`、`?` 和捕获。解析不依赖空格或换行。
+
+`m! { attrs }` 与裸属性闭包生成同样的代码，适合在普通 Rust 中使用；
+`m!(move { attrs })` 使用移动捕获。UIM 内的裸闭包不需要导入 `m`。
+
+### 显式参数
+
+`=>` 左侧是参数，右侧是一个完整 UIM 表达式：
+
+```text
+item => expr         → |item| expr
+(a, b) => expr       → |a, b| expr
+() => expr           → || expr
+move (a, b) => expr  → move |a, b| expr
+```
+
+单参数可以写标识符或 `_`，也可以使用圆括号。括号参数列表支持 Rust 参数
+模式、可选类型注解和末尾逗号；不可反驳性等约束由 Rust 检查。
+多参数与单个元组参数明确区分：
+
+```text
+(a, b) => expr       → |a, b| expr
+((a, b),) => expr    → |(a, b)| expr
+```
+
+例如：
+
+```rust
+el! {
+    .div {
+        on_click: (event, window, cx) => (event, window, cx).handle_click;
+    } [
+        ..items { into_iter; map: item => .div [item] },
+    ]
+}
+
+let configure = el! { (node: Div, width: Pixels) => node { w: width } };
+```
+
+类型通常由接收闭包的 API 推断；独立保存且在主体中调用方法的闭包可能需要
+参数类型注解，这与普通 Rust 闭包一致。
+
+`=>` 的主体包含后续属性、children 和函数后缀，直到当前层的分隔符、分支
+标记或输入结束。嵌套箭头向右结合：`a => b => expr` 返回另一个闭包。
+`(a, b) => { flex }` 同样表示返回一个裸属性闭包；不会隐式选择 a 或 b。
+配置某个参数时明确写 `(node, width) => node { w: width }`。
+
+## 属性与克隆
+
+属性之间使用 `;`，最后一个分号可以省略，换行不作为分隔符。
+
+| 属性 | 展开 |
+| --- | --- |
+| `flex`、`flex:` | `.flex()` |
+| `set_pair: a, b` | `.set_pair(a, b)` |
+| `#value` | `.id(value)` |
+| `#? expr` | `.debug_selector(|| expr)` |
+| `#? move expr` | `.debug_selector(move || expr)` |
+| `hover: { attrs }` | `.hover(闭包)` |
+| `hover: move { attrs }` | `.hover(移动捕获的闭包)` |
+| `when: condition, handler` | `.when(condition, handler)` |
+| `when: condition, move { attrs }` | `.when(condition, 移动捕获的闭包)` |
+
+`attr` 是 Rust 方法标识符，支持 `r#type` 等原始标识符。
+`#value` 与 `id: value` 等价，只能放在属性块中。
+Rust 2024 将紧贴的 `#"..."` 保留为特殊字符串语法，所以字符串 ID 必须写成
+`# "id"`，在 `#` 后留空格。这是 Rust 词法限制，宏无法改变。
+
+`#?` 为 `debug_selector` 自动补上零参数闭包，适用于 `el!` 和 `m!` 的属性块。
+后面是完整的 UIM 表达式，可以带属性块、后缀和控制指令：
+
+```rust
+.div {
+    # "root";
+    #? "root" { into };
+}
+.div {
+    # $("task", id);
+    #? move format!("task-{id}");
+}
+```
+
+`#? move expr` 等价于 `debug_selector: move () => expr`；表达式在闭包被调用时
+求值，具体调用时机由 `debug_selector` 方法决定。它不隐式转换返回值；GPUI
+要求返回 `String`，所以字符串字面量需要 `{ into }` 或 `.String::from`。
+`#` 和 `#?` 独立设置 ID 与调试选择器，互不代替。
+
+下面两种写法等价，分别展示函数后缀和方法属性块：
+
+```text
+#? "empty-state".String::from;
+#? "empty-state" { into };
+```
+
+`~value` 展开成 `(value).clone()`，只作用于紧随其后的值，优先于 `.`：
+
+```text
+~label           → label.clone()
+~state.render    → render(state.clone())
+~$(state.field)  → (state.field).clone()
+value.~handler   → 将 value 传给 handler.clone()
+```
+
+它不自动克隆闭包捕获的变量。`move { child: ~label }` 仍会先把 label 移入
+闭包，在执行闭包时克隆。需要在创建闭包前克隆时，先用普通 Rust 绑定克隆结果。
+
+`when: condition, handler` 是普通方法调用，handler 表达式本身会正常求值，
+即使条件为假也会构造 handler。GPUI 的 `when` 只在条件为真时执行闭包主体。
+闭包捕获发生在构造时，不会因为条件为假而自动保留被移入的变量。
+
+## 控制指令
+
+`@if (...)`、`@else if (...)`、`@else`、`@match (...)`、`@case (...)` 和
+`@end` 是控制标记。`@end` 结束最近一层控制块。它们不依赖换行或缩进。
+连续条件分支写 `@else if (...)`，当前不支持连写的 `@elseif`。
+
+条件和匹配值的括号内解析 Rust 表达式；case 括号内解析 Rust 模式和可选
+`if` 守卫。它们都不需要 `$`，可以直接使用字段、函数、运算、解构和 `|` 模式。
+分支内容则继续使用 UIM。
+
+### children 与属性片段
+
+在 children 列表中，每个分支是零个或多个子元素：
+
+```rust
+el! {
+    .div [
+        "标题",
+        @if (!a || !b)
+            .div ["内容 A"],
+            .div ["内容 B"],
+        @else if (count > 0)
+            "其他内容",
+        @else
+            "暂无内容",
+        @end,
+        @match (&result)
+        @case (Ok(items) if items.is_empty())
+            "空列表",
+        @case (Ok(items))
+            ..items { iter; map: render_item },
+        @case (Err(error))
+            .div [format!("加载失败：{error}")],
+        @end,
+        "页脚",
     ]
 }
 ```
 
-构造器参数也使用相同的值规则，Rust 回调同样需要 `$`。
-例如 `#img($self.image_path.clone())`、`List(1.increment, $(a + b))`，
-或 `#deferred(#div ["内容"])`。函数路径中的泛型参数仍使用 Rust 类型语法。
-
-GPUI 元素统一使用 `el!` 的工厂语法，例如 `#div`、`#svg`、`#img(source)`。
-可以导入工厂函数，也可以直接使用 `#gpui::div` 等完整路径。
-样式 trait 和 `px` 等值转换函数由调用方导入。
+在属性块中，每个分支是零个或多个属性项，也允许嵌套控制块：
 
 ```rust
-use gpui::{div, img, prelude::*, px};
-use gds_uim::el;
+el! {
+    .div {
+        # "root";
+        @if (active)
+            bg: active_color;
+            hover: { bg: hover_color };
+        @else
+            bg: normal_color;
+        @end;
+        flex;
+    }
+}
+```
 
-let image = el! { #img("images/avatar.png") { size: 32.0.px; } };
-let element = el! {
-    #div { flex; flex_col; gap: 8.0.px; } [
-        #div ["标题"],
-        $image,
+分支内部沿用所在位置的分隔符。整个控制块也占一个列表项：后面还有属性时，
+`@end` 后写 `;`；后面还有 children 时写 `,`。最后一项和分支末项的分隔符可省略。
+片段 `@if` 可以省略 `@else`，不满足条件时保持当前 builder 不变。
+
+片段展开成对父 builder 的条件更新。分支里的子元素可以是不同类型，分支
+最后返回的 builder 类型必须兼容；无 else 的 if 必须兼容原 builder 类型。
+同一次控制块的各分支也可以一致地改变 builder 类型。
+
+### 值位置
+
+根表达式、调用参数和属性参数中的控制块产生一个值，每个分支恰好一个 UIM
+表达式，分支表达式后直接接下一个控制标记。值位置的 `@if` 必须有 `@else`：
+
+```rust
+el! {
+    @if (ready)
+        .div ["已就绪"]
+    @else
+        .div ["等待中"]
+    @end { flex } [extra_child].post_process
+}
+```
+
+此时 `@end` 后的后缀作用于选中分支的结果，各分支返回类型必须兼容。
+children/属性片段本身没有单个元素值，不能直接在片段的 `@end` 后接元素后缀。
+在 children 中需要条件值时，可将它放到调用参数位置，例如
+`(@if (ready) .div ["yes"] @else .div ["no"] @end).post_process`。
+
+指令直接生成 Rust `if`/`match`，不额外引入闭包。条件按分支顺序求值，
+只执行被选中的主体。匹配值求值一次，模式绑定只在对应守卫和分支中有效。
+`match` 保留 Rust 的借用、移动、守卫和穷尽性检查，不自动补默认分支。
+需要兜底时显式写 `@case (_)`；片段中的兜底主体可以为空。
+
+## 子元素与阶段
+
+`[child1, child2]` 按顺序调用 `.child(child1).child(child2)`。
+`..expression` 调用 `.children(expression)`。属性块也能配置普通值：
+
+```rust
+el! {
+    .div [
+        "标题",
+        existing_element,
+        .div ["嵌套内容"],
+        ..rows,
+        ..items { into_iter; map: render_item },
     ]
-};
+}
 ```
 
-有泛型参数的工厂使用 `#gpui::canvas::<Pixels>(参数) {属性}`。
+`..items { into_iter; map: render_item }` 与
+`..$(items.into_iter().map(render_item))` 等价：items 只求值一次，迭代器的惰性保持不变。
 
-用于渲染的元素树应在 GPUI 的 `Render::render` 或 `RenderOnce::render` 中
-构建，让子元素的帧内分配和事件处理器归属正确的视图。
+值或调用后可以接任意数量的属性块、children 列表和函数后缀，严格按书写顺序
+操作当前结果。块和列表可以为空，也可以连续出现同一种块。
+每个 `.callable` 接收它左边已经完成的整个结果：
 
-`examples/clicker.rs` 使用 `el!` 构建加一、重置按钮和计数显示：
-
-```sh
-cargo run --locked --example clicker
+```text
+value { flex } [x, y] { f1; f2 } [u, v].some_post_process
 ```
 
-验证使用 GPUI 0.2.2 的 `test-support` 开发依赖：
+等价于 `some_post_process(value.flex().child(x).child(y).f1().f2().child(u).child(v))`。
+后写的属性不会被提前到 children 前。每一步都可以改变返回类型。
 
-```sh
-cargo test --locked
+## 求值与所有权
+
+函数路径直接生成 `f(args)`，保留 Rust 的闭包借用、类型推断和参数求值规则。
+调用参数、属性和子元素从左到右求值一次，不重复执行任何输入表达式。
+动态可调用值则先求所有参数，再求这个可调用值，最后调用。
+
+动态调用通过 `FnOnce` 按值传递。需要复用闭包时可显式借用：
+`value.$(&handler)` 或 `value.$(&mut handler)`；也可用 `~handler` 克隆。
+直接调用闭包路径 `value.handler` 与 Rust 的 `handler(value)` 使用相同的
+借用或移动规则。闭包实现 Fn/FnMut/FnOnce 中的哪些 trait 仍由 Rust 根据主体决定。
+
+DSL 不添加隐式克隆、借用或类型转换。捕获、借用、移动和返回类型由 Rust 检查。
+
+## 形式化语法
+
+EBNF 中 `?` 表示可选，`*` 表示重复，引号中是字面 token。
+`control<T>` 中的 T 表示由所在位置决定的分支内容，并非实际输入 token。
+
+```text
+uim-expr := uim-head uim-body ("." uim-val uim-body)*
+uim-head := uim-val | "." uim-val | "(" uim-args ")" "." uim-val
+uim-body := (uim-attr-block | uim-children)*
+uim-args := (uim-expr ("," uim-expr)* ","?)?
+
+uim-val := rust-path | rust-literal | rust-macro
+         | "$" rust-parenthesized-expression | "$" rust-expr
+         | "~" uim-val
+         | "move"? uim-attr-block
+         | "move"? closure-params "=>" uim-expr
+         | control<uim-expr>
+closure-params := rust-ident | "_" | "(" closure-param-list ")"
+closure-param-list := (closure-param ("," closure-param)* ","?)?
+closure-param := rust-param-pattern (":" rust-type)?
+
+uim-attr-block := "{" attr-items "}"
+attr-items := (uim-attr-item (";" uim-attr-item)* ";"?)?
+uim-attr-item := attr | attr ":" uim-args | "#" uim-expr
+               | "#" "?" "move"? uim-expr
+               | control<attr-items>
+
+uim-children := "[" child-items "]"
+child-items := (uim-child ("," uim-child)* ","?)?
+uim-child := ".."? uim-expr | control<child-items>
+
+control<T> := "@if" "(" rust-expr ")" T
+              ("@else" "if" "(" rust-expr ")" T)*
+              ("@else" T)? "@end"
+            | "@match" "(" rust-expr ")"
+              ("@case" "(" rust-pattern ("if" rust-expr)? ")" T)*
+              "@end"
+el-input := uim-expr
+m-input := attr-items | "move" uim-attr-block
 ```
 
-`tests/gpui.rs` 通过真实 GPUI 测试窗口执行视图布局、绘制和事件派发，覆盖
-构造器、DSL 单位值、嵌套与展开子元素、条件变化后的重绘、原生文本、多参数
-鼠标回调，以及后缀 `Deferred` 的布局和绘制优先级。
-库中的 GPUI 使用示例也作为文档测试编译并运行。
-clicker 的测试直接点击示例中的按钮，验证计数变化和窗口标题重绘。
+值位置的 if 额外要求 else。children 项直接以 `@` 开始时选择片段解析，
+表达式内部则选择值解析。普通括号后若为 `=>` 则解析闭包参数，否则要求
+`.callable`。单参数箭头闭包也优先于路径值解析；箭头主体向右延伸。
 
-`examples/task_board.rs` 展示更完整的界面：统计卡片、进度条、筛选任务列表和
-详情面板。小控件用普通 Rust 函数复用，列表通过 `..rows` 展开，交互通过
-`cx.listener` 修改视图状态并重绘。任务数据只保存在内存中：
+`rust-path` 包含单独标识符。`rust-parenthesized-expression` 包含括号本身，
+可以是分组表达式、元组或 unit；它在 `$` 后优先匹配。
+分隔符不能充当空属性或空参数；根表达式后不接逗号。
 
-```sh
-cargo run --locked --example task_board
-```
+## 实现
 
-看板测试通过真实点击验证筛选、选中项、完成／重新打开、优先级、空结果恢复
-和重置，并检查最小窗口尺寸下列表与详情面板的布局。
+独立的 `gds-uim-macros` 过程宏 crate 由主库重新导出 `el!` 和 `m!`。
+Rust 表达式、模式和类型交给 `syn`。生成器用局部绑定保留顺序和类型变化。
+函数路径直接调用，以保留高阶回调的类型和生命周期推断；动态可调用值使用
+带 `FnOnce` 约束的局部辅助函数，以推断闭包参数类型并保证输入先求值。
 
-内部解析器在 `src/macros` 中按元素、属性、值、子元素和完成回调拆成独立宏。
-属性与子树独立展开，完整节点跳过多余的后缀扫描，减少已完成阶段增加的
-递归深度。clicker 和 32 层带属性元素树的回归测试在 Rust 默认递归上限下
-编译，不需要额外设置 `recursion_limit`。这不是无限深度保证；
-实现约束和测试范围见 [宏展开阶段](expansion.md)。
+`syn`、`quote` 和 `proc-macro2` 仅用于编译期解析与生成。
+GPUI 只作为测试和示例的开发依赖。
 
-`Cargo.lock` 使用兼容的 `libc` 0.2.186；GPUI 0.2.2 间接依赖的旧版 `xattr`
-引用了新版本 `libc` 已移除的常量。Linux 构建需要 GPUI 的系统开发库，包含
-`libxkbcommon-x11-dev`。
+展开结构、临时借用和递归深度的回归约束见 [宏展开阶段](expansion.md)。

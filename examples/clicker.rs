@@ -4,6 +4,7 @@ use gpui::{
     Window, WindowBounds, WindowOptions, div, prelude::*, px, rgb, size,
 };
 
+// A small introduction: postfix calls, bare mapper values and ID/selector shorthands.
 #[derive(Default)]
 struct Clicker {
     count: u64,
@@ -24,18 +25,18 @@ impl Render for Clicker {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         window.set_window_title(&format!("Clicker — {}", self.count));
         el! {
-            # div { flex; size_full; items_center; justify_center; p: 24.0.px; bg: 0x0f172a.rgb; text_color: 0xe2e8f0.rgb } [
-                # div {
-                    flex; flex_col; items_center; border_2; w: 340.0.px; p: 32.0.px; gap: 16.0.px;
+            .div { flex; size_full; items_center; justify_center; p: 24.0.px; bg: 0x0f172a.rgb; text_color: 0xe2e8f0.rgb } [
+                .div {
+                    flex; flex_col; items_center; w: 340.0.px; p: 32.0.px; gap: 16.0.px;
                     bg: 0x1e293b.rgb; border_1; border_color: 0x334155.rgb; rounded_xl; shadow_lg
                 } [
-                    # div { text_size: 14.0.px; text_color: 0x94a3b8.rgb } [ "CLICKS" ],
-                    # div { text_size: 72.0.px; font_weight: FontWeight::BOLD } [ $format!("{}", self.count) ],
-                    # div { text_size: 13.0.px; text_color: 0x94a3b8.rgb } [ "Click the button to increase the count." ],
-                    # div { flex; gap: 12.0.px; } [
-                        # div {
-                            id: "increment";
-                            debug_selector: $|| "increment".to_owned();
+                    .div { text_size: 14.0.px; text_color: 0x94a3b8.rgb } [ "CLICKS" ],
+                    .div { text_size: 72.0.px; font_weight: FontWeight::BOLD } [format!("{}", self.count)],
+                    .div { text_size: 13.0.px; text_color: 0x94a3b8.rgb } [ "Click the button to increase the count." ],
+                    .div { flex; gap: 12.0.px; } [
+                        .div {
+                            # "increment";
+                            #? "increment" { into };
                             flex;
                             items_center;
                             justify_center;
@@ -45,14 +46,14 @@ impl Render for Clicker {
                             bg: 0x6366f1.rgb;
                             text_color: 0xffffff.rgb;
                             cursor_pointer;
-                            hover => { bg: 0x818cf8.rgb };
-                            on_click: $cx.listener(Self::on_click);
+                            hover: { bg: 0x818cf8.rgb };
+                            on_click: (cx, Self::on_click).Context::listener;
                         } ["Click +1"],
                     ],
-                    # div {
-                        id: "reset";
-                        debug_selector: $|| "reset".to_owned();
-                        on_click: $cx.listener(Self::on_clear);
+                    .div {
+                        # "reset";
+                        #? "reset" { into };
+                        on_click: (cx, Self::on_clear).Context::listener;
                         flex;
                         items_center;
                         justify_center;
@@ -61,7 +62,7 @@ impl Render for Clicker {
                         rounded_lg;
                         bg: 0x334155.rgb;
                         cursor_pointer;
-                        hover => { bg: 0x475569.rgb };
+                        hover: { bg: 0x475569.rgb };
                     } ["Reset"],
                 ]
             ]

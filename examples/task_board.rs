@@ -1,7 +1,8 @@
-use gds_uim::el;
+use gds_uim::{el, m};
 use gpui::{
-    App, Application, Bounds, Context, Div, FontWeight, IntoElement, SharedString, Stateful,
-    TitlebarOptions, Window, WindowBounds, WindowOptions, div, prelude::*, px, relative, rgb, size,
+    App, Application, Bounds, ClickEvent, Context, Div, FontWeight, IntoElement, SharedString,
+    Stateful, TitlebarOptions, Window, WindowBounds, WindowOptions, div, prelude::*, px, relative,
+    rgb, size,
 };
 
 const BACKGROUND: u32 = 0x10141f;
@@ -112,41 +113,143 @@ impl Default for TaskBoard {
     }
 }
 
-// Small view helpers keep the element tree readable without a separate style DSL.
-fn button(id: &'static str, label: impl Into<SharedString>, highlighted: bool) -> Stateful<Div> {
-    let label = label.into();
-    let background = if highlighted { 0x424c99 } else { 0x242c3e };
-    let hover = if highlighted { 0x525fb5 } else { 0x343e54 };
-    el! {
-        #div {
-            id: id; debug_selector: $move || id.to_owned();
-            flex; flex_shrink_0; items_center; justify_center; h: 36.0.px; px: 14.0.px;
-            rounded_lg; text_size: 13.0.px; font_weight: FontWeight::MEDIUM;
-            bg: background.rgb; cursor_pointer; hover => { bg: hover.rgb };
-        } [$label]
+// m! also works in ordinary Rust. The element tree can apply this helper with .panel.
+fn panel(element: Div) -> Div {
+    element.map(m! { rounded_xl; bg: PANEL.rgb; border_1; border_color: BORDER.rgb })
+}
+
+// Components expose named builder methods; event behavior belongs to TaskBoard.
+#[derive(IntoElement)]
+struct Button {
+    element: Stateful<Div>,
+    label: SharedString,
+    highlighted: bool,
+}
+
+impl Button {
+    fn new(id: &'static str) -> Self {
+        Self {
+            element: el! { .div { # id; #? move id { into } } },
+            label: "".into(),
+            highlighted: false,
+        }
+    }
+
+    fn label(mut self, label: impl Into<SharedString>) -> Self {
+        self.label = label.into();
+        self
+    }
+
+    fn highlighted(mut self, highlighted: bool) -> Self {
+        self.highlighted = highlighted;
+        self
+    }
+
+    fn on_click(mut self, listener: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static) -> Self {
+        self.element = self.element.on_click(listener);
+        self
     }
 }
 
-fn badge(label: &'static str, color: u32) -> Div {
-    el! {
-        #div {
-            flex_shrink_0; px: 8.0.px; py: 4.0.px; rounded_md;
-            text_size: 11.0.px; text_color: color.rgb; bg: BACKGROUND.rgb;
-        } [$label]
+impl RenderOnce for Button {
+    fn render(self, _: &mut Window, _: &mut App) -> impl IntoElement {
+        let Self {
+            element,
+            label,
+            highlighted,
+        } = self;
+        el! {
+            element {
+                flex; flex_shrink_0; items_center; justify_center; h: 36.0.px; px: 14.0.px;
+                rounded_lg; text_size: 13.0.px; font_weight: FontWeight::MEDIUM; cursor_pointer;
+                @if (highlighted)
+                    bg: 0x424c99.rgb;
+                    hover: { bg: 0x525fb5.rgb };
+                @else
+                    bg: 0x242c3e.rgb;
+                    hover: { bg: 0x343e54.rgb };
+                @end;
+            } [label]
+        }
     }
 }
 
-fn stat_card(label: &'static str, value: usize, color: u32) -> Div {
-    el! {
-        #div {
-            flex; flex_col; flex_1; gap: 6.0.px; p: 18.0.px;
-            rounded_xl; bg: PANEL.rgb; border_1; border_color: BORDER.rgb;
-        } [
-            #div { text_size: 12.0.px; text_color: MUTED.rgb } [$label],
-            #div { text_size: 28.0.px; font_weight: FontWeight::BOLD; text_color: color.rgb } [
-                $value.to_string(),
-            ],
-        ]
+#[derive(IntoElement)]
+struct Badge {
+    label: &'static str,
+    color: u32,
+}
+
+impl Badge {
+    fn with_label(label: &'static str) -> Self {
+        Self {
+            label,
+            color: MUTED,
+        }
+    }
+
+    fn color(mut self, color: u32) -> Self {
+        self.color = color;
+        self
+    }
+}
+
+impl RenderOnce for Badge {
+    fn render(self, _: &mut Window, _: &mut App) -> impl IntoElement {
+        let Self { label, color } = self;
+        el! {
+            .div {
+                flex_shrink_0; px: 8.0.px; py: 4.0.px; rounded_md;
+                text_size: 11.0.px; text_color: color.rgb; bg: BACKGROUND.rgb;
+            } [label]
+        }
+    }
+}
+
+#[derive(IntoElement)]
+struct StatCard {
+    label: &'static str,
+    value: usize,
+    color: u32,
+}
+
+impl StatCard {
+    fn with_label(label: &'static str) -> Self {
+        Self {
+            label,
+            value: 0,
+            color: MUTED,
+        }
+    }
+
+    fn value(mut self, value: usize) -> Self {
+        self.value = value;
+        self
+    }
+
+    fn color(mut self, color: u32) -> Self {
+        self.color = color;
+        self
+    }
+}
+
+impl RenderOnce for StatCard {
+    fn render(self, _: &mut Window, _: &mut App) -> impl IntoElement {
+        let Self {
+            label,
+            value,
+            color,
+        } = self;
+        el! {
+            .div {
+                flex; flex_col; flex_1; gap: 6.0.px; p: 18.0.px;
+            } [
+                .div { text_size: 12.0.px; text_color: MUTED.rgb } [label],
+                .div { text_size: 28.0.px; font_weight: FontWeight::BOLD; text_color: color.rgb } [
+                    value { to_string },
+                ],
+            ].panel
+        }
     }
 }
 
@@ -185,20 +288,61 @@ impl TaskBoard {
         self.reconcile_selection();
     }
 
-    fn show_all(&mut self) {
+    fn on_filter(
+        filter: Filter,
+    ) -> impl Fn(&mut Self, &ClickEvent, &mut Window, &mut Context<Self>) {
+        move |this, _, _, cx| {
+            this.filter = filter;
+            this.reconcile_selection();
+            cx.notify();
+        }
+    }
+
+    fn on_select_task(
+        id: usize,
+    ) -> impl Fn(&mut Self, &ClickEvent, &mut Window, &mut Context<Self>) {
+        move |this, _, _, cx| {
+            this.selected = Some(id);
+            cx.notify();
+        }
+    }
+
+    fn on_reset(&mut self, _: &ClickEvent, _: &mut Window, cx: &mut Context<Self>) {
+        *self = Self::default();
+        cx.notify();
+    }
+
+    fn on_toggle_done(&mut self, _: &ClickEvent, _: &mut Window, cx: &mut Context<Self>) {
+        self.update_selected(|task| task.done = !task.done);
+        cx.notify();
+    }
+
+    fn on_toggle_priority(&mut self, _: &ClickEvent, _: &mut Window, cx: &mut Context<Self>) {
+        self.update_selected(|task| task.priority = !task.priority);
+        cx.notify();
+    }
+
+    fn on_toggle_priority_only(&mut self, _: &ClickEvent, _: &mut Window, cx: &mut Context<Self>) {
+        self.priority_only = !self.priority_only;
+        self.reconcile_selection();
+        cx.notify();
+    }
+
+    fn on_show_all(&mut self, _: &ClickEvent, _: &mut Window, cx: &mut Context<Self>) {
         self.filter = Filter::All;
         self.priority_only = false;
         self.reconcile_selection();
+        cx.notify();
     }
 
-    fn filter_button(&self, filter: Filter, cx: &mut Context<Self>) -> Stateful<Div> {
-        button(filter.id(), filter.label(), self.filter == filter).on_click(cx.listener(
-            move |this, _, _, cx| {
-                this.filter = filter;
-                this.reconcile_selection();
-                cx.notify();
-            },
-        ))
+    fn filter_button(&self, filter: Filter, cx: &mut Context<Self>) -> Button {
+        el! {
+            $(filter.id()).Button::new {
+                label: $filter.label();
+                highlighted: $self.filter == filter;
+                on_click: (cx, filter.Self::on_filter).Context::listener;
+            }
+        }
     }
 
     fn task_row(&self, task: &Task, cx: &mut Context<Self>) -> Stateful<Div> {
@@ -207,91 +351,75 @@ impl TaskBoard {
         let background = if selected { 0x252d48 } else { PANEL };
         let hover = if selected { 0x2e3858 } else { 0x222a3c };
         let text = if task.done { MUTED } else { 0xe8edf7 };
-        let priority = task.priority.then(|| badge("Priority", AMBER));
         el! {
-            #div {
-                id: $("task", id); debug_selector: $move || format!("task-{id}");
+            .div {
+                # $("task", id); #? move format!("task-{id}");
                 flex; flex_shrink_0; items_center; gap: 12.0.px; p: 16.0.px; rounded_lg;
                 border_1; border_color: BORDER.rgb; bg: background.rgb;
-                cursor_pointer; hover => { bg: hover.rgb };
-                @selected => { border_color: ACCENT.rgb };
-                on_click: $cx.listener(move |this, _, _, cx| {
-                    this.selected = Some(id);
-                    cx.notify();
-                });
+                cursor_pointer; hover: move { bg: hover.rgb };
+                when: selected, { border_color: ACCENT.rgb };
+                on_click: (cx, id.Self::on_select_task).Context::listener;
             } [
-                #div { flex; flex_col; flex_1; min_w_0; gap: 6.0.px } [
-                    #div { text_size: 14.0.px; text_color: text.rgb; truncate } [$task.title],
-                    #div { text_size: 11.0.px; text_color: MUTED.rgb } [
-                        $format!("{}  /  {}", task.category, task.due),
+                .div { flex; flex_col; flex_1; min_w_0; gap: 6.0.px } [
+                    .div { text_size: 14.0.px; text_color: text.rgb; truncate } [$task.title],
+                    .div { text_size: 11.0.px; text_color: MUTED.rgb } [
+                        format!("{}  /  {}", task.category, task.due),
                     ],
                 ],
-                ..priority,
-                $badge(if task.done { "Done" } else { "Open" }, if task.done { GREEN } else { MUTED }),
+                @if (task.priority)
+                    "Priority".Badge::with_label { color: AMBER },
+                @end,
+                @if (task.done)
+                    "Done".Badge::with_label { color: GREEN },
+                @else
+                    "Open".Badge::with_label,
+                @end,
             ]
         }
     }
 
     fn details(&self, cx: &mut Context<Self>) -> Div {
-        let Some(task) = self
-            .tasks
-            .iter()
-            .find(|task| Some(task.id) == self.selected)
-        else {
-            return el! {
-                #div { flex; flex_col; gap: 12.0.px } [
-                    #div { text_size: 18.0.px; font_weight: FontWeight::BOLD } ["Nothing selected"],
-                    #div { text_size: 13.0.px; text_color: MUTED.rgb } [
+        // A value match binds the selected task and returns a Div from either arm.
+        el! {
+            @match (self.tasks.iter().find(|task| Some(task.id) == self.selected))
+            @case (Some(task))
+                .div { flex; flex_col; h_full; gap: 16.0.px } [
+                    .div { # "detail-content"; flex_1; min_h_0; overflow_y_scroll } [
+                        .div { flex; flex_col; gap: 16.0.px } [
+                            .div { text_size: 11.0.px; text_color: MUTED.rgb } ["TASK DETAILS"],
+                            .div { text_size: 21.0.px; font_weight: FontWeight::BOLD } [$task.title],
+                            .div { flex; gap: 8.0.px } [
+                                $(task.category).Badge::with_label { color: ACCENT },
+                                @if (task.done)
+                                    "Completed".Badge::with_label { color: GREEN },
+                                @else
+                                    "In progress".Badge::with_label { color: AMBER },
+                                @end,
+                            ],
+                            .div { text_size: 14.0.px; text_color: MUTED.rgb; line_height: 22.0.px } [$task.description],
+                            .div { text_size: 12.0.px; text_color: MUTED.rgb } [format!("Planned for {}", task.due.to_lowercase())],
+                        ],
+                    ],
+                    .div { flex; flex_col; flex_shrink_0; gap: 8.0.px } [
+                        "toggle-done".Button::new {
+                            label: @if (task.done) "Reopen task" @else "Mark complete" @end;
+                            highlighted: true;
+                            on_click: (cx, Self::on_toggle_done).Context::listener;
+                        },
+                        "toggle-priority".Button::new {
+                            label: @if (task.priority) "Remove priority" @else "Make priority" @end;
+                            on_click: (cx, Self::on_toggle_priority).Context::listener;
+                        },
+                    ],
+                ]
+            @case (None)
+                .div { flex; flex_col; gap: 12.0.px } [
+                    .div { text_size: 18.0.px; font_weight: FontWeight::BOLD } ["Nothing selected"],
+                    .div { text_size: 13.0.px; text_color: MUTED.rgb } [
                         "Choose a task from the list to see its details.",
                     ],
                 ]
-            };
-        };
-        let toggle_done = button(
-            "toggle-done",
-            if task.done {
-                "Reopen task"
-            } else {
-                "Mark complete"
-            },
-            true,
-        )
-        .on_click(cx.listener(|this, _, _, cx| {
-            this.update_selected(|task| task.done = !task.done);
-            cx.notify();
-        }));
-        let toggle_priority = button(
-            "toggle-priority",
-            if task.priority {
-                "Remove priority"
-            } else {
-                "Make priority"
-            },
-            false,
-        )
-        .on_click(cx.listener(|this, _, _, cx| {
-            this.update_selected(|task| task.priority = !task.priority);
-            cx.notify();
-        }));
-        el! {
-            #div { flex; flex_col; h_full; gap: 16.0.px } [
-                #div { id: "detail-content"; flex_1; min_h_0; overflow_y_scroll } [
-                    #div { flex; flex_col; gap: 16.0.px } [
-                        #div { text_size: 11.0.px; text_color: MUTED.rgb } ["TASK DETAILS"],
-                        #div { text_size: 21.0.px; font_weight: FontWeight::BOLD } [$task.title],
-                        #div { flex; gap: 8.0.px } [
-                            $badge(task.category, ACCENT),
-                            $badge(if task.done { "Completed" } else { "In progress" }, if task.done { GREEN } else { AMBER }),
-                        ],
-                        #div { text_size: 14.0.px; text_color: MUTED.rgb; line_height: 22.0.px } [$task.description],
-                        #div { text_size: 12.0.px; text_color: MUTED.rgb } [$format!("Planned for {}", task.due.to_lowercase())],
-                    ],
-                ],
-                #div { flex; flex_col; flex_shrink_0; gap: 8.0.px } [
-                    $toggle_done,
-                    $toggle_priority,
-                ],
-            ]
+            @end
         }
     }
 }
@@ -319,82 +447,73 @@ impl Render for TaskBoard {
             .map(|task| self.task_row(task, cx))
             .collect();
         let visible = rows.len();
-        let filters: Vec<_> = [Filter::All, Filter::Open, Filter::Done]
-            .into_iter()
-            .map(|filter| self.filter_button(filter, cx))
-            .collect();
-        let details = self.details(cx);
-        let reset =
-            button("reset-board", "Reset demo", false).on_click(cx.listener(|this, _, _, cx| {
-                *this = Self::default();
-                cx.notify();
-            }));
-        let priority_filter = button("priority-only", "Priority only", self.priority_only)
-            .on_click(cx.listener(|this, _, _, cx| {
-                this.priority_only = !this.priority_only;
-                this.reconcile_selection();
-                cx.notify();
-            }));
-        let empty = (visible == 0).then(|| {
-            let show_all = button("show-all", "Show all tasks", true).on_click(cx.listener(|this, _, _, cx| {
-                this.show_all();
-                cx.notify();
-            }));
-            el! {
-                #div {
-                    debug_selector: $|| "empty-state".to_owned();
-                    flex; flex_col; items_center; gap: 14.0.px; py: 36.0.px;
-                } [
-                    #div { text_size: 16.0.px } ["No tasks in this view"],
-                    #div { text_size: 12.0.px; text_color: MUTED.rgb } ["Try another filter to see more tasks."],
-                    $show_all,
-                ]
-            }
-        });
+        let filters = [Filter::All, Filter::Open, Filter::Done];
 
         el! {
-            #div {
+            .div {
                 flex; flex_col; size_full; p: 28.0.px; gap: 20.0.px;
                 bg: BACKGROUND.rgb; text_color: 0xe8edf7.rgb;
             } [
-                #div { flex; items_center; justify_between; flex_shrink_0 } [
-                    #div { flex; flex_col; gap: 8.0.px } [
-                        #div { text_size: 11.0.px; text_color: ACCENT.rgb } ["WORKSPACE / INTERFACE LAB"],
-                        #div { text_size: 30.0.px; font_weight: FontWeight::BOLD } ["A little progress, every day."],
-                        #div { text_size: 13.0.px; text_color: MUTED.rgb } ["Select a task, set a priority, and keep things moving."],
+                .div { flex; items_center; justify_between; flex_shrink_0 } [
+                    .div { flex; flex_col; gap: 8.0.px } [
+                        .div { text_size: 11.0.px; text_color: ACCENT.rgb } ["WORKSPACE / INTERFACE LAB"],
+                        .div { text_size: 30.0.px; font_weight: FontWeight::BOLD } ["A little progress, every day."],
+                        .div { text_size: 13.0.px; text_color: MUTED.rgb } ["Select a task, set a priority, and keep things moving."],
                     ],
-                    $reset,
+                    "reset-board".Button::new {
+                        label: "Reset demo";
+                        on_click: (cx, Self::on_reset).Context::listener;
+                    },
                 ],
-                #div { flex; gap: 14.0.px; flex_shrink_0 } [
-                    $stat_card("OPEN TASKS", total - completed, ACCENT),
-                    $stat_card("COMPLETED", completed, GREEN),
-                    $stat_card("PRIORITY / OPEN", priority, AMBER),
+                .div { flex; gap: 14.0.px; flex_shrink_0 } [
+                    "OPEN TASKS".StatCard::with_label { value: $total - completed; color: ACCENT },
+                    "COMPLETED".StatCard::with_label { value: completed; color: GREEN },
+                    "PRIORITY / OPEN".StatCard::with_label { value: priority; color: AMBER },
                 ],
-                #div { flex; items_center; gap: 14.0.px; flex_shrink_0 } [
-                    #div { flex_1; h: 6.0.px; rounded_full; bg: BORDER.rgb; overflow_hidden } [
-                        #div { h_full; w: progress.relative; rounded_full; bg: GREEN.rgb },
+                .div { flex; items_center; gap: 14.0.px; flex_shrink_0 } [
+                    .div { flex_1; h: 6.0.px; rounded_full; bg: BORDER.rgb; overflow_hidden } [
+                        .div { h_full; w: progress.relative; rounded_full; bg: GREEN.rgb },
                     ],
-                    #div { text_size: 12.0.px; text_color: MUTED.rgb } [$format!("{completed} of {total} complete")],
+                    .div { text_size: 12.0.px; text_color: MUTED.rgb } [format!("{completed} of {total} complete")],
                 ],
-                #div { flex; flex_1; min_h_0; gap: 20.0.px } [
-                    #div { flex; flex_col; flex_1; min_w_0; gap: 14.0.px } [
-                        #div { flex; items_center; justify_between; flex_shrink_0 } [
-                            #div { text_size: 17.0.px; font_weight: FontWeight::BOLD } [$format!("Tasks ({visible})")],
-                            $priority_filter,
+                .div { flex; flex_1; min_h_0; gap: 20.0.px } [
+                    .div { flex; flex_col; flex_1; min_w_0; gap: 14.0.px } [
+                        .div { flex; items_center; justify_between; flex_shrink_0 } [
+                            .div { text_size: 17.0.px; font_weight: FontWeight::BOLD } [format!("Tasks ({visible})")],
+                            "priority-only".Button::new {
+                                label: "Priority only";
+                                highlighted: $self.priority_only;
+                                on_click: (cx, Self::on_toggle_priority_only).Context::listener;
+                            },
                         ],
-                        #div { flex; gap: 8.0.px; flex_shrink_0 } [..filters],
-                        #div { id: "task-list"; flex; flex_col; flex_1; min_h_0; gap: 8.0.px; overflow_y_scroll } [
-                            ..rows,
-                            ..empty,
+                        .div { flex; gap: 8.0.px; flex_shrink_0 } [
+                            ..filters { into_iter; map: filter => (self, filter, cx).Self::filter_button },
+                        ],
+                        .div { # "task-list"; flex; flex_col; flex_1; min_h_0; gap: 8.0.px; overflow_y_scroll } [
+                            @if (visible == 0)
+                                .div {
+                                    #? "empty-state".String::from;
+                                    flex; flex_col; items_center; gap: 14.0.px; py: 36.0.px;
+                                } [
+                                    .div { text_size: 16.0.px } ["No tasks in this view"],
+                                    .div { text_size: 12.0.px; text_color: MUTED.rgb } ["Try another filter to see more tasks."],
+                                    "show-all".Button::new {
+                                        label: "Show all tasks";
+                                        highlighted: true;
+                                        on_click: (cx, Self::on_show_all).Context::listener;
+                                    },
+                                ],
+                            @else
+                                ..rows,
+                            @end,
                         ],
                     ],
-                    #div {
-                        id: "details"; debug_selector: $|| "details-panel".to_owned();
-                        w: 290.0.px; flex_shrink_0; p: 22.0.px; rounded_xl;
-                        bg: PANEL.rgb; border_1; border_color: BORDER.rgb; overflow_hidden;
-                    } [$details],
+                    .div.panel {
+                        # "details"; #? "details-panel" { into };
+                        w: 290.0.px; flex_shrink_0; p: 22.0.px; overflow_hidden;
+                    } [(self, cx).Self::details],
                 ],
-                #div { text_size: 11.0.px; text_color: MUTED.rgb; flex_shrink_0 } [
+                .div { text_size: 11.0.px; text_color: MUTED.rgb; flex_shrink_0 } [
                     "Demo workspace · Changes stay in memory. Reset demo restores the starting tasks.",
                 ],
             ]
