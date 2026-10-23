@@ -194,7 +194,19 @@ fn control<T>(
             let mut result = otherwise.as_ref().map_or(fallback, |branch| expand(branch));
             for (condition, branch) in branches.iter().rev() {
                 let branch = expand(branch);
-                result = quote! { if (#condition) { #branch } else { #result } };
+                // Print in condition context: let chains cannot be wrapped in
+                // parentheses, while struct literals may need them.
+                let conditional = syn::ExprIf {
+                    attrs: Vec::new(),
+                    if_token: Default::default(),
+                    cond: Box::new(condition.clone()),
+                    then_branch: syn::Block {
+                        brace_token: Default::default(),
+                        stmts: vec![syn::Stmt::Expr(syn::Expr::Verbatim(branch), None)],
+                    },
+                    else_branch: Some((Default::default(), Box::new(syn::Expr::Verbatim(result)))),
+                };
+                result = quote! { #conditional };
             }
             result
         }

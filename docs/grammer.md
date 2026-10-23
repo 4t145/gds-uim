@@ -242,9 +242,26 @@ value.~handler   → 将 value 传给 handler.clone()
 `@end` 是控制标记。`@end` 结束最近一层控制块。它们不依赖换行或缩进。
 连续条件分支写 `@else if (...)`，当前不支持连写的 `@elseif`。
 
-条件和匹配值的括号内解析 Rust 表达式；case 括号内解析 Rust 模式和可选
-`if` 守卫。它们都不需要 `$`，可以直接使用字段、函数、运算、解构和 `|` 模式。
-分支内容则继续使用 UIM。
+条件的括号内使用 Rust 条件语法，匹配值的括号内解析 Rust 表达式；case 括号内
+解析 Rust 模式和可选 `if` 守卫。它们都不需要 `$`，可以直接使用字段、函数、
+运算、解构和 `|` 模式。分支内容则继续使用 UIM。
+
+`@if` 和 `@else if` 支持 `let pattern = expr`，也支持用 `&&` 连接的
+let chains（调用方使用 Rust 2024 edition）。指令最外层的括号只标定条件边界，
+不会给展开后的 Rust 条件额外加括号。模式绑定对后续 `&&` 条件和命中分支可见，
+保留 Rust 的借用、移动和短路求值语义：
+
+```rust
+el! {
+    .div [
+        @if (let Some(label) = label && !label.is_empty())
+            label,
+        @else
+            "暂无内容",
+        @end,
+    ]
+}
+```
 
 ### children 与属性片段
 
@@ -400,8 +417,8 @@ uim-children := "[" child-items "]"
 child-items := (uim-child ("," uim-child)* ","?)?
 uim-child := ".."? uim-expr | control<child-items>
 
-control<T> := "@if" "(" rust-expr ")" T
-              ("@else" "if" "(" rust-expr ")" T)*
+control<T> := "@if" "(" rust-condition ")" T
+              ("@else" "if" "(" rust-condition ")" T)*
               ("@else" T)? "@end"
             | "@match" "(" rust-expr ")"
               ("@case" "(" rust-pattern ("if" rust-expr)? ")" T)*

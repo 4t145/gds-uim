@@ -1633,6 +1633,138 @@ fn if_fragments_are_lazy_and_preserve_sibling_and_condition_order() {
 }
 
 #[test]
+fn if_let_children_preserve_bindings_moves_and_single_evaluation() {
+    for (first, second, expected, evaluations) in [
+        (Some("first"), Some("second"), "first", 1),
+        (None, Some("second"), "second", 2),
+        (None, None, "outer", 2),
+    ] {
+        let calls = Cell::new(0);
+        let evaluate = |value| {
+            calls.set(calls.get() + 1);
+            value
+        };
+        let first = first.map(String::from);
+        let second = second.map(String::from);
+        let text = "outer";
+        let actual = ui! {
+            .List::new [
+                @if (let Some(text) = evaluate(first))
+                    text,
+                @else if (let Some(text) = evaluate(second))
+                    text,
+                @else
+                    text,
+                @end,
+                text,
+                @if (let Some(text) = None::<String>) text @end,
+            ]
+        };
+        assert_eq!(calls.get(), evaluations);
+        assert_eq!(
+            actual.children,
+            [expected, "outer"].map(|text| Child::Text(text.into()))
+        );
+    }
+}
+
+#[test]
+fn if_let_attributes_keep_bindings_in_the_selected_branch() {
+    for selected in [Some("selected"), None] {
+        let value = selected.map(String::from);
+        let text = "outer";
+        let actual = ui! {
+            .List::new {
+                @if (let Some(text) = value)
+                    child: text;
+                @else if (let Some(text) = Some(String::from("fallback")))
+                    child: text;
+                @end;
+                label: text;
+                @if (let Some(value) = None::<f32>) gap: value @end;
+            }
+        };
+        assert_eq!(actual.calls, ["new", "label(outer)"]);
+        assert_eq!(
+            actual.children,
+            [Child::Text(selected.unwrap_or("fallback").into())]
+        );
+    }
+}
+
+#[test]
+fn if_let_values_preserve_borrows_and_else_if_bindings() {
+    for (first, second, expected) in [
+        (Some("first"), Some("second"), "first"),
+        (None, Some("second"), "second"),
+        (None, None, "outer"),
+    ] {
+        let first = first.map(String::from);
+        let second = second.map(String::from);
+        let outer = String::from("outer");
+        let text = &outer;
+        let actual = ui! {
+            @if (let Some(ref text) = first)
+                text
+            @else if (let Some(ref text) = second)
+                text
+            @else
+                text
+            @end
+        };
+        assert_eq!(actual, expected);
+        assert_eq!(first.as_ref().or(second.as_ref()).unwrap_or(text), actual);
+    }
+}
+
+#[test]
+fn if_let_chains_short_circuit_and_share_bindings() {
+    for (enabled, source, expected, evaluations) in [
+        (false, Some(Some("ready")), "fallback", 1),
+        (true, None, "fallback", 2),
+        (true, Some(None), "fallback", 3),
+        (true, Some(Some("")), "fallback", 4),
+        (true, Some(Some("ready")), "ready", 4),
+    ] {
+        let calls = Cell::new(0);
+        let tick = || calls.set(calls.get() + 1);
+        let source = source.map(|inner| inner.map(String::from));
+        let actual = ui! {
+            @if ({ tick(); enabled }
+                && let Some(inner) = { tick(); source }
+                && let Some(text) = { tick(); inner }
+                && { tick(); !text.is_empty() })
+                text
+            @else
+                "fallback".String::from
+            @end
+        };
+        assert_eq!(actual, expected);
+        assert_eq!(calls.get(), evaluations);
+    }
+}
+
+#[test]
+fn if_conditions_preserve_struct_literal_grouping() {
+    struct Flags {
+        enabled: bool,
+    }
+
+    for enabled in [true, false] {
+        let actual = ui! {
+            @if (Flags { enabled }.enabled)
+                "enabled"
+            @else if (!Flags { enabled }.enabled)
+                "disabled"
+            @else
+                "unreachable"
+            @end
+        };
+        assert_eq!(actual, if enabled { "enabled" } else { "disabled" });
+    }
+}
+
+#[test]
 fn nested_attribute_controls_work_inside_mappers_and_keep_bindings_hygienic() {
     let selected = Some(8.0);
     let actual = ui! {
