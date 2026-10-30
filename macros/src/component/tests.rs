@@ -118,15 +118,28 @@ fn rejects_invalid_attr_configuration() {
 }
 
 #[test]
-fn rejects_component_arguments() {
-    let error = expand(
-        quote!(default),
-        quote!(
-            struct Button {}
+fn rejects_invalid_component_options() {
+    for (args, expected) in [
+        (quote!(default), "unknown component option; expected gpui"),
+        (
+            quote!(gpui = gpui_kit, gpui = gpui_pre),
+            "duplicate component option `gpui`",
         ),
-    )
-    .unwrap_err();
-    assert!(error.to_string().contains("does not accept arguments"));
+        (quote!(gpui), "expected `=`"),
+        (quote!(gpui = "gpui_kit"), "expected identifier"),
+    ] {
+        let error = expand(
+            args,
+            quote!(
+                struct Button {}
+            ),
+        )
+        .unwrap_err();
+        assert!(
+            error.to_string().contains(expected),
+            "expected {expected:?}, got {error}"
+        );
+    }
 }
 
 #[test]

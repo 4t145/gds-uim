@@ -3,8 +3,9 @@ use std::collections::HashSet;
 use proc_macro2::{Span, TokenStream as TokenStream2};
 use quote::quote;
 use syn::{
-    Attribute, Error, Fields, GenericArgument, Ident, ItemStruct, LitStr, Meta, PathArguments,
-    Result, Token, Type, Visibility, parse_quote, punctuated::Punctuated,
+    Attribute, Error, Fields, GenericArgument, Ident, ItemStruct, LitStr, Meta, Path,
+    PathArguments, Result, Token, Type, Visibility, parse::Parser, parse_quote,
+    punctuated::Punctuated,
 };
 
 #[derive(Default)]
@@ -68,13 +69,7 @@ impl Options {
 }
 
 pub fn expand(args: TokenStream2, input: TokenStream2) -> Result<TokenStream2> {
-    if !args.is_empty() {
-        return Err(Error::new_spanned(
-            args,
-            "#[component] does not accept arguments",
-        ));
-    }
-
+    let gpui = component_gpui_path(args)?;
     let mut item: ItemStruct = syn::parse2(input)?;
     let Fields::Named(fields) = &mut item.fields else {
         return Err(Error::new_spanned(
@@ -123,8 +118,8 @@ pub fn expand(args: TokenStream2, input: TokenStream2) -> Result<TokenStream2> {
         };
         let (param_ty, value) = if options.any_element {
             (
-                quote!(impl ::gpui::IntoElement),
-                quote!(::gpui::IntoElement::into_any_element(#parameter)),
+                quote!(impl #gpui::IntoElement),
+                quote!(#gpui::IntoElement::into_any_element(#parameter)),
             )
         } else if options.into {
             (
@@ -172,6 +167,22 @@ pub fn expand(args: TokenStream2, input: TokenStream2) -> Result<TokenStream2> {
             #(#methods)*
         }
     })
+}
+
+fn component_gpui_path(args: TokenStream2) -> Result<Path> {
+    let mut gpui = None;
+    syn::meta::parser(|meta| {
+        if !meta.path.is_ident("gpui") {
+            return Err(meta.error("unknown component option; expected gpui"));
+        }
+        if gpui.is_some() {
+            return Err(meta.error("duplicate component option `gpui`"));
+        }
+        gpui = Some(meta.value()?.parse::<Path>()?);
+        Ok(())
+    })
+    .parse2(args)?;
+    Ok(gpui.unwrap_or_else(|| parse_quote!(::gpui)))
 }
 
 fn option_inner(ty: &Type) -> Result<&Type> {

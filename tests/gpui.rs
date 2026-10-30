@@ -18,11 +18,12 @@ mod element_attributes {
     use std::cell::Cell;
 
     use gds_uim::{component, el, m};
+    use gpui as gpui_pre;
     use gpui::{AnyElement, Div, SharedString, div};
 
     // IntoElement is deliberately absent from this scope: generated setters
     // must work without importing the trait or GPUI's prelude.
-    #[component]
+    #[component(gpui = gpui_pre)]
     struct Panel {
         #[attr(any_element, name = "expanded", vis = "pub(crate)")]
         expanded_content: AnyElement,

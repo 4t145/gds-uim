@@ -162,6 +162,9 @@ let label = el! { .Label::new { text: "Hello" } };
 assert_eq!(label.text, "Hello");
 ```
 
+使用 `gpui-kit` 时可写 `#[component(gpui = gpui_kit)]`，让 `any_element`
+使用该库重导出的 GPUI trait。默认的 `#[component]` 使用 `::gpui` 路径。
+
 组件通过构建器方法暴露具名属性，事件逻辑放在成员方法中。下面取自
 [task_board](examples/task_board.rs)，`Button` 和 `StatCard` 是该示例定义的组件：
 

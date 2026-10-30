@@ -12,8 +12,9 @@ pub use gds_uim_macros::component;
 /// `.div` calls `div()`, `(a, b).f` calls `f(a, b)`, and `value.f` calls
 /// `f(value)`. Bare paths denote existing values. Rust expressions use `$(...)`.
 /// Attribute blocks and child lists can alternate or repeat; each suffix receives
-/// the complete preceding result. Inputs are evaluated once, in source order. Computed callables are
-/// evaluated after their inputs; paths preserve Rust's normal call semantics.
+/// the complete preceding result. Each call evaluates its callable first, then
+/// its inputs once from left to right, following Rust's normal call semantics.
+/// Fixed-signature factories provide argument coercion and reborrowing sites.
 /// Bare `{ attrs }` and `move { attrs }` values create builder closures.
 /// Named closures use `item => expr`, `(a, b) => expr`, or `() => expr`.
 /// `#? expr` calls `.debug_selector(|| expr)`; `#? move expr` moves captures.

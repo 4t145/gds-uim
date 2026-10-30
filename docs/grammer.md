@@ -42,7 +42,7 @@ let element = el! {
 | `a.f.g` | `g(f(a))` |
 | `1.0.px` | `px(1.0)` |
 | `value.convert::<T>` | `convert::<T>(value)` |
-| `value.$(make_handler())` | 先求 value，再生成 handler，最后调用 handler |
+| `value.$(make_handler())` | 先生成 handler，再求 value，最后调用 handler |
 | `value.{ flex }` | 将 value 传给裸块生成的闭包 |
 | `value.m! { flex }` | 将 value 传给宏生成的闭包 |
 
@@ -377,14 +377,30 @@ value { flex } [x, y] { f1; f2 } [u, v].some_post_process
 
 函数路径直接生成 `f(args)`，保留 Rust 的闭包借用、类型推断和参数求值规则。
 调用参数、属性和子元素从左到右求值一次，不重复执行任何输入表达式。
-动态可调用值则先求所有参数，再求这个可调用值，最后调用。
+动态调用同样先求可调用值，再从左到右求参数，最后调用；这与普通 Rust 函数调用的顺序一致。
 
 动态调用通过 `FnOnce` 按值传递。需要复用闭包时可显式借用：
 `value.$(&handler)` 或 `value.$(&mut handler)`；也可用 `~handler` 克隆。
 直接调用闭包路径 `value.handler` 与 Rust 的 `handler(value)` 使用相同的
 借用或移动规则。闭包实现 Fn/FnMut/FnOnce 中的哪些 trait 仍由 Rust 根据主体决定。
 
-DSL 不添加隐式克隆、借用或类型转换。捕获、借用、移动和返回类型由 Rust 检查。
+固定签名的工厂函数会先确定输入类型，参数随后遵循 Rust 的重新借用、解引用和切片转换规则。例如返回 `impl FnOnce(&App) -> SharedString` 的翻译工厂，可以接收实现 `Deref<Target = App>` 的可变上下文引用，并保留该引用供后续使用：
+
+```rust,ignore
+fn deferred(callback: impl FnOnce(&App) -> SharedString) -> impl FnOnce(&App) -> SharedString {
+    callback
+}
+
+macro_rules! t {
+    ($id:literal) => {
+        deferred(|cx| text($id, cx))
+    };
+}
+
+el! { cx.t!("tabs").SectionTitle::new }
+```
+
+直接返回闭包字面量的宏仍由参数推断其输入类型；需要上下文借用转换时，使用上述有明确返回签名的工厂。自定义工厂若在 Rust 代码块内返回闭包，需要在声明中提供返回签名，或给闭包参数标注类型，例如 `value.$({ prepare(); move |node: List| node.flex() })`。DSL 不添加隐式克隆或自动取引用，捕获、借用、移动和返回类型由 Rust 检查。
 
 ## 形式化语法
 
@@ -440,7 +456,7 @@ m-input := attr-items | "move" uim-attr-block
 独立的 `gds-uim-macros` 过程宏 crate 由主库重新导出 `el!` 和 `m!`。
 Rust 表达式、模式和类型交给 `syn`。生成器用局部绑定保留顺序和类型变化。
 函数路径直接调用，以保留高阶回调的类型和生命周期推断；动态可调用值使用
-带 `FnOnce` 约束的局部辅助函数，以推断闭包参数类型并保证输入先求值。
+带 `FnOnce` 约束的局部辅助函数，先检查可调用值，再推断输入参数；固定签名的工厂因而可以为参数提供 Rust 的借用和类型转换上下文。
 
 `syn`、`quote` 和 `proc-macro2` 仅用于编译期解析与生成。
 GPUI 只作为测试和示例的开发依赖。

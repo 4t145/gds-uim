@@ -210,3 +210,43 @@ fn preserves_derives_docs_and_conditional_fields() {
     assert_eq!(conditional.value, 42);
     assert_eq!(format!("{conditional:?}"), "Conditional { value: 42 }");
 }
+
+mod custom_gpui_path {
+    use gds_uim::{component, el};
+
+    // An independent trait catches accidentally generating ::gpui::IntoElement
+    // when a facade path was explicitly selected.
+    mod facade {
+        pub struct AnyElement(pub String);
+
+        pub trait IntoElement {
+            fn into_any_element(self) -> AnyElement;
+        }
+
+        impl IntoElement for &str {
+            fn into_any_element(self) -> AnyElement {
+                AnyElement(self.to_owned())
+            }
+        }
+    }
+
+    #[component(gpui = crate::custom_gpui_path::facade)]
+    struct Panel {
+        #[attr(any_element)]
+        expanded: facade::AnyElement,
+        #[attr(any_element, option, option_setter = "collapsed_opt")]
+        collapsed: Option<facade::AnyElement>,
+    }
+
+    #[test]
+    fn uses_the_selected_facade_for_bounds_and_conversions() {
+        let panel = Panel {
+            expanded: facade::AnyElement(String::new()),
+            collapsed: None,
+        };
+        let panel = el! { panel { expanded: "expanded"; collapsed: "collapsed" } };
+        assert_eq!(panel.expanded.0, "expanded");
+        assert_eq!(panel.collapsed.as_ref().unwrap().0, "collapsed");
+        assert!(panel.collapsed_opt(None).collapsed.is_none());
+    }
+}

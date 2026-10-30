@@ -88,8 +88,8 @@ pub fn text(mut self, value: impl Into<String>) -> Self {
 
 `any_element` 用于 GPUI 元素插槽，将传入的组件、元素或文本转换为 `AnyElement`。
 它与 `into` 互斥，可与 `option` 组合；不带 `option` 时字段类型为 `AnyElement`，
-带 `option` 时为 `Option<AnyElement>`。生成代码使用 `::gpui::IntoElement` 的
-完整路径，使用项目需要提供 `gpui` 依赖，无需在调用处额外导入该 trait。
+带 `option` 时为 `Option<AnyElement>`。默认生成代码使用 `::gpui::IntoElement`
+的完整路径，无需在调用处额外导入该 trait；项目也可以配置 GPUI 的实际路径。
 
 ```rust
 use gds_uim::{component, el};
@@ -126,6 +126,32 @@ assert!(panel.collapsed.is_none());
 `expanded` 的 setter 直接保存 `gpui::IntoElement::into_any_element(value)`，
 `collapsed` 的 setter 则保存 `Some(gpui::IntoElement::into_any_element(value))`。
 `collapsed_opt` 接收完整的 `Option<AnyElement>`，直接覆盖或清空插槽。
+
+使用 `gpui-kit` 的项目可以直接使用其重导出的 GPUI API：
+
+```rust
+# use gpui as gpui_kit;
+use gds_uim::component;
+use gpui_kit::AnyElement;
+
+#[component(gpui = gpui_kit)]
+struct Panel {
+    #[attr(any_element, option)]
+    collapsed: Option<AnyElement>,
+}
+
+let panel = Panel { collapsed: None }.collapsed("收起时的内容");
+assert!(panel.collapsed.is_some());
+```
+
+`gpui` 配置接收 Rust 路径，不是字符串；对该组件所有 `any_element` 字段生效。
+例如 `#[component(gpui = gpui_pre)]`、`#[component(gpui = crate::ui::gpui)]`，
+路径必须同时导出 `IntoElement` 和对应的 `into_any_element` 方法。
+`#[component]` 保持默认的 `::gpui` 路径。
+
+Cargo 包名和 Rust 中的 crate 路径可能不同。若依赖写成
+`gpui = { package = "gpui-pre", ... }`，Rust 路径仍是 `gpui`，可直接使用默认配置。
+只依赖 `gpui-kit` 时，使用上面的 `gpui = gpui_kit` 配置即可。
 
 额外配置可以与 `into`、`any_element`、`option` 组合：
 

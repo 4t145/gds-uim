@@ -54,20 +54,20 @@ fn apply(args: Vec<TokenStream>, callable: &Value) -> TokenStream {
     }
     let types: Vec<_> = (0..args.len()).map(|i| format_ident!("A{i}")).collect();
     let names: Vec<_> = (0..args.len()).map(|i| format_ident!("arg{i}")).collect();
-    // A concrete FnOnce bound supplies closure parameter types before checking
-    // their bodies. The tuple also evaluates every input before the callable.
+    // Check the callable before its arguments so a factory's fixed signature
+    // supplies coercion sites. The FnOnce bound also types inferred closures.
     let helper = helper_name(&args, &callable);
     quote_spanned! { span =>
         {
             #[inline]
             fn #helper<#(#types,)* R>(
-                args: (#(#types,)*),
                 callable: impl ::core::ops::FnOnce(#(#types),*) -> R,
+                args: (#(#types,)*),
             ) -> R {
                 let (#(#names,)*) = args;
                 callable(#(#names),*)
             }
-            #helper((#(#args,)*), #callable)
+            #helper(#callable, (#(#args,)*))
         }
     }
 }

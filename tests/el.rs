@@ -953,7 +953,7 @@ fn macro_suffixes_evaluate_the_input_and_callable_once_in_order() {
             $events.borrow_mut().push("make closure");
             let events = &$events;
             let payload = $payload;
-            move |element| {
+            move |element: List| {
                 events.borrow_mut().push("apply closure");
                 drop(payload);
                 element.flex()
@@ -971,7 +971,7 @@ fn macro_suffixes_evaluate_the_input_and_callable_once_in_order() {
     };
     assert_eq!(
         *events.borrow(),
-        ["element", "make closure", "apply closure"]
+        ["make closure", "element", "apply closure"]
     );
     assert_eq!(actual.calls, ["new", "flex", "label(captured)"]);
 }
@@ -1347,7 +1347,7 @@ fn clone_binds_to_a_value_and_is_explicit_for_callables() {
 }
 
 #[test]
-fn computed_multi_argument_callable_runs_after_inputs_once() {
+fn computed_multi_argument_callable_runs_before_inputs_once() {
     let events = std::cell::RefCell::new(Vec::new());
     let log = &events;
     let payload = String::from("once");
@@ -1357,7 +1357,7 @@ fn computed_multi_argument_callable_runs_after_inputs_once() {
             $({ log.borrow_mut().push("right"); String::from("right") }),
         ).$({
             log.borrow_mut().push("callable");
-            move |left, right| {
+            move |left: String, right: String| {
                 log.borrow_mut().push("call");
                 drop(payload);
                 left + &right
@@ -1365,7 +1365,81 @@ fn computed_multi_argument_callable_runs_after_inputs_once() {
         })
     };
     assert_eq!(actual, "leftright");
-    assert_eq!(*events.borrow(), ["left", "right", "callable", "call"]);
+    assert_eq!(*events.borrow(), ["callable", "left", "right", "call"]);
+}
+
+#[test]
+fn macro_factories_coerce_and_reborrow_mutable_contexts() {
+    struct App {
+        label: String,
+    }
+    struct Context {
+        app: App,
+        updates: usize,
+    }
+    impl std::ops::Deref for Context {
+        type Target = App;
+
+        fn deref(&self) -> &App {
+            &self.app
+        }
+    }
+    fn deferred(callback: impl FnOnce(&App) -> String) -> impl FnOnce(&App) -> String {
+        callback
+    }
+    fn heading(label: String) -> List {
+        List::new().label(&label)
+    }
+    macro_rules! t {
+        () => {
+            deferred(|cx| cx.label.clone())
+        };
+        ($count:expr) => {
+            deferred(|cx| format!("{}: {}", cx.label, $count))
+        };
+    }
+
+    let mut context = Context {
+        app: App {
+            label: "tabs".into(),
+        },
+        updates: 0,
+    };
+    let cx = &mut context;
+    assert_eq!(ui! { cx.t!() }, "tabs");
+    let calls = Cell::new(0);
+    let title = ui! {
+        cx.t!({ calls.set(calls.get() + 1); calls.get() }).heading { flex }
+    };
+    assert_eq!(title.calls, ["new", "label(tabs: 1)", "flex"]);
+    assert_eq!(calls.get(), 1);
+    cx.updates += 1;
+    assert_eq!(cx.updates, 1);
+
+    let cx = &mut cx.app;
+    assert_eq!(ui! { cx.t!() }, "tabs");
+    cx.label.push('!');
+    assert_eq!(ui! { cx.t!() }, "tabs!");
+}
+
+#[test]
+fn factory_signatures_coerce_each_argument_without_moving_references() {
+    fn make_handler() -> impl FnOnce(&str, &[u8]) -> usize {
+        let captured = String::from("consumed once");
+        move |label, bytes| {
+            drop(captured);
+            label.len() + bytes.len()
+        }
+    }
+
+    let mut label = String::from("tabs");
+    let mut bytes = vec![1, 2];
+    let label = &mut label;
+    let bytes = &mut bytes;
+    assert_eq!(ui! { (label, bytes).$(make_handler()) }, 6);
+    label.push('!');
+    bytes.push(3);
+    assert_eq!(ui! { (label, bytes).$(make_handler()) }, 8);
 }
 
 #[test]
