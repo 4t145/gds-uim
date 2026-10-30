@@ -140,7 +140,7 @@ let element = el! {
 ## 组件与事件
 
 `#[component]` 为带 `#[attr]` 的字段生成链式 setter，构造器继续手写。
-支持 `into`、`option`、可选值透传、方法重命名和可见性配置，完整用法见
+支持 `into`、`any_element` 元素转换、`option`、可选值透传、方法重命名和可见性配置，完整用法见
 [组件属性](docs/attr.md)。例如：
 
 ```rust

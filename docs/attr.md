@@ -64,6 +64,8 @@ assert!(button.icon.is_none());
 | `#[attr(into)]` | `T` | `impl Into<T>` | `value.into()` |
 | `#[attr(option)]` | `Option<T>` | `T` | `Some(value)` |
 | `#[attr(option, into)]` | `Option<T>` | `impl Into<T>` | `Some(value.into())` |
+| `#[attr(any_element)]` | `AnyElement` | `impl gpui::IntoElement` | `gpui::IntoElement::into_any_element(value)` |
+| `#[attr(any_element, option)]` | `Option<AnyElement>` | `impl gpui::IntoElement` | `Some(gpui::IntoElement::into_any_element(value))` |
 
 `option` 只表示调用时省略 `Some`，不负责字段初始化或必填检查。
 它要求字段类型写成 `Option<T>`，也支持 `std::option::Option<T>`、
@@ -84,7 +86,48 @@ pub fn text(mut self, value: impl Into<String>) -> Self {
 }
 ```
 
-额外配置可以与 `into`、`option` 组合：
+`any_element` 用于 GPUI 元素插槽，将传入的组件、元素或文本转换为 `AnyElement`。
+它与 `into` 互斥，可与 `option` 组合；不带 `option` 时字段类型为 `AnyElement`，
+带 `option` 时为 `Option<AnyElement>`。生成代码使用 `::gpui::IntoElement` 的
+完整路径，使用项目需要提供 `gpui` 依赖，无需在调用处额外导入该 trait。
+
+```rust
+use gds_uim::{component, el};
+use gpui::{AnyElement, div};
+
+#[component]
+struct Panel {
+    #[attr(any_element)]
+    expanded: AnyElement,
+    #[attr(any_element, option, option_setter = "collapsed_opt")]
+    collapsed: Option<AnyElement>,
+}
+
+impl Panel {
+    fn new() -> Self {
+        Self {
+            expanded: gpui::IntoElement::into_any_element(div()),
+            collapsed: None,
+        }
+    }
+}
+
+let panel = el! {
+    .Panel::new {
+        expanded: .div;
+        collapsed: "收起时的内容";
+    }
+};
+assert!(panel.collapsed.is_some());
+let panel = panel.collapsed_opt(None);
+assert!(panel.collapsed.is_none());
+```
+
+`expanded` 的 setter 直接保存 `gpui::IntoElement::into_any_element(value)`，
+`collapsed` 的 setter 则保存 `Some(gpui::IntoElement::into_any_element(value))`。
+`collapsed_opt` 接收完整的 `Option<AnyElement>`，直接覆盖或清空插槽。
+
+额外配置可以与 `into`、`any_element`、`option` 组合：
 
 - `name = "label"`：修改 setter 名，字段名保持不变。Rust 关键字使用
   `name = "r#type"` 这样的原始标识符。

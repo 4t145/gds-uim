@@ -23,6 +23,33 @@ fn rejects_invalid_attr_configuration() {
         ),
         (
             quote!(
+                struct Panel {
+                    #[attr(any_element, any_element)]
+                    content: AnyElement,
+                }
+            ),
+            "duplicate attr option `any_element`",
+        ),
+        (
+            quote!(
+                struct Panel {
+                    #[attr(any_element, into)]
+                    content: AnyElement,
+                }
+            ),
+            "any_element and into are mutually exclusive",
+        ),
+        (
+            quote!(
+                struct Panel {
+                    #[attr(into, option, any_element)]
+                    content: Option<AnyElement>,
+                }
+            ),
+            "any_element and into are mutually exclusive",
+        ),
+        (
+            quote!(
                 struct Button {
                     #[attr(name = "a", name = "b")]
                     text: String,

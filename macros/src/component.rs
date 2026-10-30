@@ -10,6 +10,7 @@ use syn::{
 #[derive(Default)]
 struct Options {
     into: bool,
+    any_element: bool,
     option: bool,
     name: Option<Ident>,
     vis: Option<Visibility>,
@@ -34,6 +35,7 @@ impl Options {
             }
             match key.as_str() {
                 "into" => options.into = true,
+                "any_element" => options.any_element = true,
                 "option" => options.option = true,
                 "name" => options.name = Some(meta.value()?.parse::<LitStr>()?.parse()?),
                 "vis" => options.vis = Some(meta.value()?.parse::<LitStr>()?.parse()?),
@@ -42,12 +44,19 @@ impl Options {
                 }
                 _ => {
                     return Err(meta.error(
-                        "unknown attr option; expected into, option, name, vis, or option_setter",
+                        "unknown attr option; expected into, any_element, option, name, vis, or option_setter",
                     ));
                 }
             }
             Ok(())
         })?;
+
+        if options.into && options.any_element {
+            return Err(Error::new_spanned(
+                attr,
+                "any_element and into are mutually exclusive",
+            ));
+        }
 
         if !options.option
             && let Some(name) = &options.option_setter
@@ -112,7 +121,12 @@ pub fn expand(args: TokenStream2, input: TokenStream2) -> Result<TokenStream2> {
         } else {
             field_ty
         };
-        let (param_ty, value) = if options.into {
+        let (param_ty, value) = if options.any_element {
+            (
+                quote!(impl ::gpui::IntoElement),
+                quote!(::gpui::IntoElement::into_any_element(#parameter)),
+            )
+        } else if options.into {
             (
                 quote!(impl ::core::convert::Into<#value_ty>),
                 quote!(::core::convert::Into::into(#parameter)),

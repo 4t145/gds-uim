@@ -14,6 +14,95 @@ use gpui::{
 // installs event handlers on the window's rendered view.
 struct TestView(Box<dyn FnMut() -> AnyElement>);
 
+mod element_attributes {
+    use std::cell::Cell;
+
+    use gds_uim::{component, el, m};
+    use gpui::{AnyElement, Div, SharedString, div};
+
+    // IntoElement is deliberately absent from this scope: generated setters
+    // must work without importing the trait or GPUI's prelude.
+    #[component]
+    struct Panel {
+        #[attr(any_element, name = "expanded", vis = "pub(crate)")]
+        expanded_content: AnyElement,
+        #[attr(any_element, option, option_setter = "collapsed_opt")]
+        collapsed: Option<::gpui::AnyElement>,
+    }
+
+    impl Panel {
+        fn new() -> Self {
+            Self {
+                expanded_content: gpui::IntoElement::into_any_element(div()),
+                collapsed: None,
+            }
+        }
+    }
+
+    struct Counted<'a>(&'a Cell<usize>);
+
+    impl gpui::IntoElement for Counted<'_> {
+        type Element = Div;
+
+        fn into_element(self) -> Self::Element {
+            self.0.set(self.0.get() + 1);
+            div()
+        }
+    }
+
+    #[test]
+    fn converts_element_slots_and_forwards_or_clears_optional_elements() {
+        let text = String::from("collapsed content");
+        let mut panel = el! {
+            .Panel::new {
+                expanded: .div;
+                collapsed: text;
+            }
+        };
+        assert!(panel.expanded_content.downcast_mut::<Div>().is_some());
+        let collapsed_text = panel
+            .collapsed
+            .as_mut()
+            .unwrap()
+            .downcast_mut::<SharedString>()
+            .unwrap();
+        assert_eq!(collapsed_text, &SharedString::from("collapsed content"));
+
+        let conversions = Cell::new(0);
+        let mut panel = panel
+            .expanded(Counted(&conversions))
+            .collapsed(Counted(&conversions));
+        assert_eq!(conversions.get(), 2);
+        assert!(panel.expanded_content.downcast_mut::<Div>().is_some());
+        assert!(
+            panel
+                .collapsed
+                .as_mut()
+                .unwrap()
+                .downcast_mut::<Div>()
+                .is_some()
+        );
+
+        let erased = gpui::IntoElement::into_any_element(div());
+        let mut panel = panel.expanded(erased);
+        assert!(panel.expanded_content.downcast_mut::<Div>().is_some());
+
+        let panel = el! { panel.m! { collapsed_opt: None } };
+        assert!(panel.collapsed.is_none());
+        let optional = Some(gpui::IntoElement::into_any_element(div()));
+        let mut panel = panel.collapsed_opt(optional);
+        assert!(
+            panel
+                .collapsed
+                .as_mut()
+                .unwrap()
+                .downcast_mut::<Div>()
+                .is_some()
+        );
+        assert_eq!(conversions.get(), 2);
+    }
+}
+
 #[test]
 fn map_closures_infer_real_gpui_style_and_element_types() {
     fn refine(builder: impl FnOnce(StyleRefinement) -> StyleRefinement) -> StyleRefinement {
