@@ -139,6 +139,29 @@ let element = el! {
 
 ## 组件与事件
 
+`#[component]` 为带 `#[attr]` 的字段生成链式 setter，构造器继续手写。
+支持 `into`、`option`、可选值透传、方法重命名和可见性配置，完整用法见
+[组件属性](docs/attr.md)。例如：
+
+```rust
+use gds_uim::{component, el};
+
+#[component]
+struct Label {
+    #[attr(into)]
+    text: String,
+}
+
+impl Label {
+    fn new() -> Self {
+        Self { text: String::new() }
+    }
+}
+
+let label = el! { .Label::new { text: "Hello" } };
+assert_eq!(label.text, "Hello");
+```
+
 组件通过构建器方法暴露具名属性，事件逻辑放在成员方法中。下面取自
 [task_board](examples/task_board.rs)，`Button` 和 `StatCard` 是该示例定义的组件：
 
@@ -180,7 +203,7 @@ cargo run --locked --example task_board
 完整的语法、求值规则和 EBNF 见 [语法文档](docs/grammer.md)。
 展开结构与回归测试范围见 [宏展开阶段](docs/expansion.md)。
 过程宏实现位于 [macros/src](macros/src)，主库在 [src/lib.rs](src/lib.rs) 中导出
-`el!` 和 `m!`。
+`el!`、`m!` 和 `component`。
 
 ```sh
 cargo test --locked --workspace

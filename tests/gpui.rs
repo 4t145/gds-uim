@@ -3,7 +3,7 @@ use std::{
     rc::Rc,
 };
 
-use gds_uim::{el, m};
+use gds_uim::{component, el, m};
 use gpui::{
     AnyElement, App, Bounds, Display, Div, FlexDirection, InteractiveText, IntoElement, Modifiers,
     MouseButton, Pixels, RenderOnce, SharedString, Stateful, StyleRefinement, StyledText,
@@ -107,9 +107,11 @@ impl RenderOnce for List {
     }
 }
 
+#[component]
 #[derive(IntoElement)]
 struct Button {
     element: Div,
+    #[attr(into)]
     label: SharedString,
 }
 
@@ -119,11 +121,6 @@ impl Button {
             element: div(),
             label: label.into(),
         }
-    }
-
-    fn label(mut self, label: impl Into<SharedString>) -> Self {
-        self.label = label.into();
-        self
     }
 }
 

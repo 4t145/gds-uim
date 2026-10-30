@@ -4,6 +4,9 @@
 //! `gpui::prelude::*`. These macros have no GPUI dependency and preserve builder
 //! return types, including methods and wrappers that change the element type.
 
+#[doc = include_str!("../docs/attr.md")]
+pub use gds_uim_macros::component;
+
 /// Build a value or element tree with postfix function application.
 ///
 /// `.div` calls `div()`, `(a, b).f` calls `f(a, b)`, and `value.f` calls

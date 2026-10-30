@@ -1,4 +1,4 @@
-use gds_uim::{el, m};
+use gds_uim::{component, el, m};
 use gpui::{
     App, Application, Bounds, ClickEvent, Context, Div, FontWeight, IntoElement, SharedString,
     Stateful, TitlebarOptions, Window, WindowBounds, WindowOptions, div, prelude::*, px, relative,
@@ -118,11 +118,14 @@ fn panel(element: Div) -> Div {
     element.map(m! { rounded_xl; bg: PANEL.rgb; border_1; border_color: BORDER.rgb })
 }
 
-// Components expose named builder methods; event behavior belongs to TaskBoard.
+// Attribute setters are generated; construction and event behavior stay in Rust.
+#[component]
 #[derive(IntoElement)]
 struct Button {
     element: Stateful<Div>,
+    #[attr(into)]
     label: SharedString,
+    #[attr]
     highlighted: bool,
 }
 
@@ -133,16 +136,6 @@ impl Button {
             label: "".into(),
             highlighted: false,
         }
-    }
-
-    fn label(mut self, label: impl Into<SharedString>) -> Self {
-        self.label = label.into();
-        self
-    }
-
-    fn highlighted(mut self, highlighted: bool) -> Self {
-        self.highlighted = highlighted;
-        self
     }
 
     fn on_click(mut self, listener: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static) -> Self {
@@ -174,9 +167,11 @@ impl RenderOnce for Button {
     }
 }
 
+#[component]
 #[derive(IntoElement)]
 struct Badge {
     label: &'static str,
+    #[attr]
     color: u32,
 }
 
@@ -186,11 +181,6 @@ impl Badge {
             label,
             color: MUTED,
         }
-    }
-
-    fn color(mut self, color: u32) -> Self {
-        self.color = color;
-        self
     }
 }
 
@@ -206,10 +196,13 @@ impl RenderOnce for Badge {
     }
 }
 
+#[component]
 #[derive(IntoElement)]
 struct StatCard {
     label: &'static str,
+    #[attr]
     value: usize,
+    #[attr]
     color: u32,
 }
 
@@ -220,16 +213,6 @@ impl StatCard {
             value: 0,
             color: MUTED,
         }
-    }
-
-    fn value(mut self, value: usize) -> Self {
-        self.value = value;
-        self
-    }
-
-    fn color(mut self, color: u32) -> Self {
-        self.color = color;
-        self
     }
 }
 

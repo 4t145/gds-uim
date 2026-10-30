@@ -1587,6 +1587,7 @@ fn bare_and_named_closures_compose_and_defer_their_bodies() {
 }
 
 #[test]
+#[allow(clippy::nonminimal_bool, reason = "Exercise compound DSL conditions.")]
 fn if_fragments_are_lazy_and_preserve_sibling_and_condition_order() {
     use std::cell::RefCell;
     let events = RefCell::new(Vec::new());

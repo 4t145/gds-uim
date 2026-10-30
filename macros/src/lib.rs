@@ -1,7 +1,15 @@
 use proc_macro::TokenStream;
 
+mod component;
 mod expand;
 mod parse;
+
+#[proc_macro_attribute]
+pub fn component(args: TokenStream, input: TokenStream) -> TokenStream {
+    component::expand(args.into(), input.into())
+        .unwrap_or_else(syn::Error::into_compile_error)
+        .into()
+}
 
 #[proc_macro]
 pub fn el(input: TokenStream) -> TokenStream {
